@@ -432,7 +432,11 @@ struct DesktopWindow::Pimpl
 #define NOMINMAX
 #define Rectangle Rectangle_renamed_to_avoid_name_collisions
 #include <windows.h>
+#include <dwmapi.h>
 #undef Rectangle
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
 
 namespace choc::ui
 {
@@ -508,6 +512,9 @@ struct WindowClass
         if (auto hwnd = CreateWindowW (classAtom, L"", style, CW_USEDEFAULT, CW_USEDEFAULT,
                                        w, h, nullptr, nullptr, moduleHandle, nullptr))
         {
+            BOOL value = TRUE;
+            ::DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, 
+                                &value, sizeof(value));
             SetWindowLongPtr (hwnd, GWLP_USERDATA, (LONG_PTR) userData);
             return hwnd;
         }
