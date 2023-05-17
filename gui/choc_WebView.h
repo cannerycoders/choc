@@ -205,9 +205,18 @@ struct choc::ui::WebView::Pimpl
                         auto* stream = g_memory_input_stream_new_from_bytes (streamBytes);
                         g_bytes_unref (streamBytes);
 
-                        webkit_uri_scheme_request_finish (request, stream, static_cast<gint64> (bytes.size()), mimeType.c_str());
+                        auto* response = webkit_uri_scheme_response_new (stream, static_cast<gint64> (bytes.size()));
+                        webkit_uri_scheme_response_set_status (response, 200, nullptr);
+                        webkit_uri_scheme_response_set_content_type (response, mimeType.c_str());
+
+                        auto* headers = soup_message_headers_new (SOUP_MESSAGE_HEADERS_RESPONSE);
+                        soup_message_headers_append (headers, "Cache-Control", "no-store");
+                        webkit_uri_scheme_response_set_http_headers (response, headers); // response takes ownership of the headers
+
+                        webkit_uri_scheme_request_finish_with_response (request, response);
 
                         g_object_unref (stream);
+                        g_object_unref (response);
                     }
                     else
                     {
@@ -405,8 +414,8 @@ private:
                 const auto& [bytes, mimeType] = *resource;
 
                 const auto contentLength = std::to_string (bytes.size());
-                const id headerKeys[] = { getNSString ("Content-Length"), getNSString ("Content-Type") };
-                const id headerObjects[] = { getNSString (contentLength), getNSString (mimeType) };
+                const id headerKeys[] = { getNSString ("Content-Length"), getNSString ("Content-Type"), getNSString ("Cache-Control") };
+                const id headerObjects[] = { getNSString (contentLength), getNSString (mimeType), getNSString ("no-store") };
                 const auto headerFields = call<id> (getClass ("NSDictionary"),
                                                     "dictionaryWithObjects:forKeys:count:",
                                                     headerObjects,
@@ -686,7 +695,7 @@ public:
     virtual HRESULT STDMETHODCALLTYPE remove_FrameNavigationCompleted(EventRegistrationToken) = 0;
     virtual HRESULT STDMETHODCALLTYPE add_ScriptDialogOpening(void*, EventRegistrationToken*) = 0;
     virtual HRESULT STDMETHODCALLTYPE remove_ScriptDialogOpening(EventRegistrationToken) = 0;
-    virtual HRESULT STDMETHODCALLTYPE add_PermissionRequested(void*, EventRegistrationToken*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_PermissionRequested(ICoreWebView2PermissionRequestedEventHandler*, EventRegistrationToken*) = 0;
     virtual HRESULT STDMETHODCALLTYPE remove_PermissionRequested(EventRegistrationToken) = 0;
     virtual HRESULT STDMETHODCALLTYPE add_ProcessFailed(void*, EventRegistrationToken*) = 0;
     virtual HRESULT STDMETHODCALLTYPE remove_ProcessFailed(EventRegistrationToken) = 0;
@@ -847,7 +856,6 @@ struct WebView::Pimpl
             return;
 
         SetWindowLongPtr (hwnd, GWLP_USERDATA, (LONG_PTR) this);
-        ShowWindow (hwnd, SW_SHOW);
 
         if (createEmbeddedWebView())
         {
@@ -912,6 +920,10 @@ private:
             if (auto w = getPimpl (h))
                 w->resizeContentToFit();
 
+        if (msg == WM_SHOWWINDOW)
+            if (auto w = getPimpl (h); w->coreWebViewController != nullptr)
+                w->coreWebViewController->put_IsVisible (wp != 0);
+
         return DefWindowProcW (h, msg, wp, lp);
     }
 
@@ -970,10 +982,15 @@ private:
         return false;
     }
 
-    void environmentCreated (ICoreWebView2Environment* env)
+    bool environmentCreated (ICoreWebView2Environment* env)
     {
+        if (coreWebViewEnvironment != nullptr)
+            return false;
+
         env->AddRef();
         coreWebViewEnvironment = env;
+
+        return true;
     }
 
     void webviewCreated (ICoreWebView2Controller* controller, ICoreWebView2* view)
@@ -1059,7 +1076,9 @@ private:
                     return E_FAIL;
 
                 const auto mimeTypeHeader = std::string ("Content-Type: ") + mimeType;
-                const auto headers = createUTF16StringFromUTF8 (mimeTypeHeader);
+                const auto cacheControlHeader = "Cache-Control: no-store";
+                const std::vector<std::string> headersToConcatenate { mimeTypeHeader, cacheControlHeader };
+                const auto headers = createUTF16StringFromUTF8 (choc::text::joinStrings (headersToConcatenate, "\n"));
 
                 if (coreWebViewEnvironment->CreateWebResourceResponse (stream, 200, L"OK", headers.c_str(), std::addressof (response)) != S_OK)
                     return E_FAIL;
@@ -1095,7 +1114,7 @@ private:
         EventHandler& operator= (EventHandler&&) = delete;
         virtual ~EventHandler() {}
 
-        HRESULT STDMETHODCALLTYPE QueryInterface (REFIID, LPVOID*) override   { return S_OK; }
+        HRESULT STDMETHODCALLTYPE QueryInterface (REFIID, LPVOID*) override   { return E_NOINTERFACE; }
         ULONG STDMETHODCALLTYPE AddRef() override     { return ++refCount; }
         ULONG STDMETHODCALLTYPE Release() override    { auto newCount = --refCount; if (newCount == 0) delete this; return newCount; }
 
@@ -1104,7 +1123,9 @@ private:
             if (env == nullptr)
                 return E_FAIL;
 
-            ownerPimpl.environmentCreated (env);
+            if (! ownerPimpl.environmentCreated (env))
+                return E_FAIL;
+
             env->CreateCoreWebView2Controller (ownerPimpl.hwnd, this);
             return S_OK;
         }

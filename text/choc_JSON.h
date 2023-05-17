@@ -55,6 +55,18 @@ value::Value parse (std::string_view);
 /// Attempts to parse a bare JSON value such as a number, string, object etc
 value::Value parseValue (std::string_view);
 
+/// A helper function to create a JSON-friendly Value object with a set of properties.
+/// The argument list must be contain pairs of names and values, e.g.
+///
+///  auto myObject = choc::json::create ("property1", 1234,
+///                                      "property2", "hello",
+///                                      "property3", 100.0f);
+///
+/// Essentially, this is a shorthand for calling choc::value::createObject()
+/// and passing it an empty type name.
+template <typename... Properties>
+value::Value create (Properties&&... propertyNamesAndValues);
+
 //==============================================================================
 /// Formats a value as a JSON string.
 /// If useLineBreaks is true, it'll be formatted as multi-line JSON, if false it'll
@@ -377,22 +389,23 @@ inline value::Value parse (text::UTF8Pointer text, bool parseBareValue)
 
             switch (pop())
             {
-                case '[':                                 return parseArray();
-                case '{':                                 return parseObject();
-                case '"':                                 return value::createString (parseString());
-                case '-':                                 skipWhitespace(); return parseNumber (true);
-                case '0': case '1': case '2':
-                case '3': case '4': case '5':
-                case '6': case '7': case '8': case '9':   current = startPos; return parseNumber (false);
-                default:                                  break;
+                case '[':    return parseArray();
+                case '{':    return parseObject();
+                case '"':    return value::createString (parseString());
+                case '-':    skipWhitespace(); return parseNumber (true);
+                case 'n':    if (popIf ("ull")) return {}; break;
+                case 't':    if (popIf ("rue"))  return value::createBool (true); break;
+                case 'f':    if (popIf ("alse")) return value::createBool (false); break;
+
+                case '0': case '1': case '2': case '3': case '4':
+                case '5': case '6': case '7': case '8': case '9':
+                    current = startPos;
+                    return parseNumber (false);
+
+                default: break;
             }
 
-            current = startPos;
-            if (popIf ("null"))   return {};
-            if (popIf ("true"))   return value::createBool (true);
-            if (popIf ("false"))  return value::createBool (false);
-
-            throwError ("Syntax error");
+            throwError ("Syntax error", startPos);
         }
 
         value::Value parseNumber (bool negate)
@@ -534,6 +547,13 @@ inline value::Value parse (const char* text, size_t numbytes, bool parseBareValu
 
 inline value::Value parse (std::string_view text)       { return parse (text.data(), text.length(), false); }
 inline value::Value parseValue (std::string_view text)  { return parse (text.data(), text.length(), true); }
+
+template <typename... Properties>
+value::Value create (Properties&&... properties)
+{
+    static_assert ((sizeof...(properties) & 1) == 0, "The arguments must be a sequence of name, value pairs");
+    return choc::value::createObject ({}, std::forward<Properties> (properties)...);
+}
 
 
 } // namespace choc::json
