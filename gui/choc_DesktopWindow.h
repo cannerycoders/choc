@@ -88,6 +88,7 @@ struct DesktopWindow
     /// Returns the native OS handle, which may be a HWND on Windows, an
     /// NSWindow* on OSX or a GtkWidget* on linux.
     void* getWindowHandle() const;
+    void* getViewHandle() const;
 
     /// An optional callback that will be called when the parent window is resized
     std::function<void()> windowResized;
@@ -159,6 +160,7 @@ struct choc::ui::DesktopWindow::Pimpl
     }
 
     void* getWindowHandle() const     { return (void*) window; }
+    void* getViewHandle() const     { return (void*) nullptr; }
 
     void setWindowTitle (const std::string& newTitle)
     {
@@ -293,6 +295,12 @@ struct DesktopWindow::Pimpl
     }
 
     void* getWindowHandle() const     { return (void*) window; }
+    void* getViewHandle() const     
+    { 
+        objc::AutoReleasePool autoreleasePool;
+        id view = objc::call<id>(window, "contentView");
+        return (void*) view;
+    }
 
     void setWindowTitle (const std::string& newTitle)
     {
@@ -591,6 +599,7 @@ struct DesktopWindow::Pimpl
     }
 
     void* getWindowHandle() const     { return hwnd; }
+    void* getViewHandle() const     { return hwnd; }
 
     void setWindowTitle (const std::string& newTitle)
     {
@@ -770,6 +779,7 @@ inline DesktopWindow::DesktopWindow (Bounds b) { pimpl = std::make_unique<Pimpl>
 inline DesktopWindow::~DesktopWindow()  {}
 
 inline void* DesktopWindow::getWindowHandle() const                        { return pimpl->getWindowHandle(); }
+inline void* DesktopWindow::getViewHandle() const                          { return pimpl->getViewHandle(); }
 inline void DesktopWindow::setContent (void* view)                         { pimpl->setContent (view); }
 inline void DesktopWindow::setVisible (bool visible)                       { pimpl->setVisible (visible); }
 inline void DesktopWindow::setWindowTitle (const std::string& title)       { pimpl->setWindowTitle (title); }
