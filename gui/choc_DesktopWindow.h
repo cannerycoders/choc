@@ -619,7 +619,15 @@ struct DesktopWindow::Pimpl
     }
 
     void* getWindowHandle() const     { return hwnd; }
-    void* getViewHandle() const     { return hwnd; }
+    void* getContentHandle() const    
+    { 
+        if(auto child = getFirstChildWindow())
+        {
+            return (void*) child;
+        }
+        else
+            return hwnd; 
+    }
 
     void setWindowTitle (const std::string& newTitle)
     {
@@ -633,6 +641,9 @@ struct DesktopWindow::Pimpl
             ShowWindow (child, SW_HIDE);
             SetParent (child, nullptr);
         }
+
+        if(!childHandle)
+            return;
 
         auto child = (HWND) childHandle;
         auto flags = GetWindowLongPtr (child, -16);
@@ -727,7 +738,7 @@ private:
         return b;
     }
 
-    HWND getFirstChildWindow()
+    HWND getFirstChildWindow() const
     {
         HWND result = {};
 
