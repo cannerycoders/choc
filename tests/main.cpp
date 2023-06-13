@@ -35,9 +35,9 @@ static int openDemoWebViewWindow()
 
     choc::ui::WebView webview;
 
-    std::cerr << "view before " << window.getViewHandle() << "\n";
-    window.setContent (webview.getViewHandle());
-    std::cerr << "view after " << window.getViewHandle() << "\n";
+    std::cerr << "view before " << window.getContentHandle() << "\n";
+    window.setContent(webview.getViewHandle());
+    std::cerr << "view after " << window.getContentHandle() << "\n";
 
     webview.bind ("eventCallbackFn", [] (const choc::value::ValueView& args) -> choc::value::Value
     {
