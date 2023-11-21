@@ -950,7 +950,12 @@ struct WebView::Pimpl
 private:
     WindowClass windowClass { L"CHOCWebView", (WNDPROC) wndProc };
     HWNDHolder hwnd;
+
+    #ifdef APP_NAME
+    const std::string resourceRequestFilterUriPrefix = "https://" DEFSTR(APP_NAME) ".localhost/";
+    #else
     const std::string resourceRequestFilterUriPrefix = "https://choc.localhost/";
+    #endif
 
     static Pimpl* getPimpl (HWND h)     { return (Pimpl*) GetWindowLongPtr (h, GWLP_USERDATA); }
 
