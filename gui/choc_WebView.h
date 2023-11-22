@@ -247,10 +247,13 @@ struct choc::ui::WebView::Pimpl
                 }
             };
 
-            APPNAME
+            #ifdef APP_NAME
+            webkit_web_context_register_uri_scheme (webviewContext, DEFSTR(APP_NAME), onResourceRequested, this, nullptr);
+            navigate (DEFSTR(APP_NAME) "://" DEFSTR(APP_NAME) "." DEFSTR(APP_NAME) "/");
+            #else
             webkit_web_context_register_uri_scheme (webviewContext, "choc", onResourceRequested, this, nullptr);
-
             navigate ("choc://choc.choc/");
+            #endif
         }
 
         gtk_widget_show_all (webview);
@@ -339,7 +342,13 @@ struct choc::ui::WebView::Pimpl
         addInitScript ("window.external = { invoke: function(s) { window.webkit.messageHandlers.external.postMessage(s); } };");
 
         if (options.fetchResource)
+        {
+            #ifdef APP_NAME
+            call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString (DEFSTR(APP_NAME)));
+            #else
             call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString ("choc"));
+            #endif
+        }
 
         webview = call<id> (allocateWebview(), "initWithFrame:configuration:", CGRect(), config);
         objc_setAssociatedObject (webview, "choc_webview", (id) this, OBJC_ASSOCIATION_ASSIGN);
@@ -347,7 +356,13 @@ struct choc::ui::WebView::Pimpl
         call<void> (config, "release");
 
         if (options.fetchResource)
+        {
+            #ifdef APP_NAME
+            navigate (DEFSTR(APP_NAME) "://" DEFSTR(APP_NAME) "." DEFSTR(APP_NAME) "/";
+            #else
             navigate ("choc://choc.choc/");
+            #endif
+        }
     }
 
     ~Pimpl()
