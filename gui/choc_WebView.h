@@ -193,6 +193,9 @@ struct choc::ui::WebView::Pimpl
         {
             webkit_settings_set_enable_write_console_messages_to_stdout (settings, true);
             webkit_settings_set_enable_developer_extras (settings, true);
+
+            WebKitWebInspector *inspector = webkit_web_view_get_inspector (WEBKIT_WEB_VIEW(webview));
+            webkit_web_inspector_show (WEBKIT_WEB_INSPECTOR(inspector));
         }
 
         if (options.fetchResource)
@@ -244,6 +247,7 @@ struct choc::ui::WebView::Pimpl
                 }
             };
 
+            APPNAME
             webkit_web_context_register_uri_scheme (webviewContext, "choc", onResourceRequested, this, nullptr);
 
             navigate ("choc://choc.choc/");
