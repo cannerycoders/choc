@@ -247,9 +247,9 @@ struct choc::ui::WebView::Pimpl
                 }
             };
 
-            #ifdef APP_NAME
-            webkit_web_context_register_uri_scheme (webviewContext, DEFSTR(APP_NAME), onResourceRequested, this, nullptr);
-            navigate (DEFSTR(APP_NAME) "://" DEFSTR(APP_NAME) "." DEFSTR(APP_NAME) "/");
+            #ifdef WEBVIEW_URISCHEME
+            webkit_web_context_register_uri_scheme (webviewContext, WEBVIEW_URISCHEME, onResourceRequested, this, nullptr);
+            navigate(WEBVIEW_URISCHEME);
             #else
             webkit_web_context_register_uri_scheme (webviewContext, "choc", onResourceRequested, this, nullptr);
             navigate ("choc://choc.choc/");
@@ -343,8 +343,8 @@ struct choc::ui::WebView::Pimpl
 
         if (options.fetchResource)
         {
-            #ifdef APP_NAME
-            call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString (DEFSTR(APP_NAME)));
+            #ifdef WEBVIEW_URISCHEME
+            call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString (WEBVIEW_URISCHEME)));
             #else
             call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString ("choc"));
             #endif
@@ -357,8 +357,8 @@ struct choc::ui::WebView::Pimpl
 
         if (options.fetchResource)
         {
-            #ifdef APP_NAME
-            navigate (DEFSTR(APP_NAME) "://" DEFSTR(APP_NAME) "." DEFSTR(APP_NAME) "/";
+            #ifdef WEBVIEW_URISCHEME
+            navigate (WEBVIEW_URISCHEME);
             #else
             navigate ("choc://choc.choc/");
             #endif
@@ -970,8 +970,8 @@ private:
     WindowClass windowClass { L"CHOCWebView", (WNDPROC) wndProc };
     HWNDHolder hwnd;
 
-    #ifdef APP_NAME
-    const std::string resourceRequestFilterUriPrefix = "https://" DEFSTR(APP_NAME) ".localhost/";
+    #ifdef WEBVIEW_URISCHEME
+    const std::string resourceRequestFilterUriPrefix = WEBVIEW_URISCHEME;
     #else
     const std::string resourceRequestFilterUriPrefix = "https://choc.localhost/";
     #endif
