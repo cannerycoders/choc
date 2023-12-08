@@ -344,7 +344,7 @@ struct choc::ui::WebView::Pimpl
         if (options.fetchResource)
         {
             #ifdef WEBVIEW_URISCHEME
-            call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString (WEBVIEW_URISCHEME)));
+            call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString (WEBVIEW_URISCHEME));
             #else
             call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString ("choc"));
             #endif
