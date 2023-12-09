@@ -249,7 +249,7 @@ struct choc::ui::WebView::Pimpl
 
             #ifdef WEBVIEW_URISCHEME
             webkit_web_context_register_uri_scheme (webviewContext, WEBVIEW_URISCHEME, onResourceRequested, this, nullptr);
-            navigate(WEBVIEW_URISCHEME);
+            navigate(WEBVIEW_URIHOME);
             #else
             webkit_web_context_register_uri_scheme (webviewContext, "choc", onResourceRequested, this, nullptr);
             navigate ("choc://choc.choc/");
@@ -358,7 +358,7 @@ struct choc::ui::WebView::Pimpl
         if (options.fetchResource)
         {
             #ifdef WEBVIEW_URISCHEME
-            navigate (WEBVIEW_URISCHEME);
+            navigate (WEBVIEW_URIHOME);
             #else
             navigate ("choc://choc.choc/");
             #endif
