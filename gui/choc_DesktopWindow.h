@@ -99,6 +99,9 @@ struct DesktopWindow
     std::function<void()> windowResized;
     /// An optional callback that will be called when the parent window is closed
     std::function<void()> windowClosed;
+    /// An optional callback that will be called when user presses window close button.
+    /// Return value signals whether the additional window shutdown process should proceed.
+    std::function<bool()> windowShouldClose;
 
 private:
     struct Pimpl;
@@ -158,10 +161,15 @@ struct choc::ui::DesktopWindow::Pimpl
 
     void windowDestroyEvent()
     {
-        g_clear_object (&window);
-
-        if (owner.windowClosed != nullptr)
-            owner.windowClosed();
+        bool shouldQuit = true;
+        if (owner.windowShouldQuit)
+            shouldQuit = owner.windowShouldQuit();
+        if(shouldQuit)
+        {
+            g_clear_object (&window);
+            if (owner.windowClosed != nullptr)
+                owner.windowClosed();
+        }
     }
 
     void* getWindowHandle() const     { return (void*) window; }
@@ -407,12 +415,16 @@ struct DesktopWindow::Pimpl
                             {
                                 objc::AutoReleasePool autoreleasePool;
                                 auto& p = getPimplFromContext (self);
-                                p.window = {};
-
-                                if (auto callback = p.owner.windowClosed)
-                                    choc::messageloop::postMessage ([callback] { callback(); });
-
-                                return TRUE;
+                                BOOL shouldClose = TRUE;
+                                if(auto shouldCloseFn = p.owner.windowShouldClose)
+                                    shouldClose = shouldCloseFn();
+                                if(shouldClose)
+                                {
+                                    p.window = {};
+                                    if (auto callback = p.owner.windowClosed)
+                                        choc::messageloop::postMessage ([callback] { callback(); });
+                                }
+                                return shouldClose;
                             }),
                             "c@:@");
 
@@ -787,7 +799,17 @@ private:
         {
             case WM_NCCREATE:        enableNonClientDPIScaling (h); break;
             case WM_SIZE:            if (auto w = getPimpl (h)) w->resizeContentToFit(); break;
-            case WM_CLOSE:           if (auto w = getPimpl (h)) if (w->owner.windowClosed != nullptr) w->owner.windowClosed(); return 0;
+            case WM_CLOSE:
+                if(auto w = getPimpl (h))
+                {
+                    bool shouldQuit = true;
+                    if(w->owner.windowShouldQuit)
+                        shouldQuit = w->owner.windowShouldQuit();
+                    if(shouldQuit && w->owner.windowClosed != nullptr)
+                        w->owner.windowClosed();
+                    return 0;
+                }
+                break;
             case WM_GETMINMAXINFO:   if (auto w = getPimpl (h)) w->getMinMaxInfo (*(LPMINMAXINFO) lp); return 0;
             default:                 break;
         }
