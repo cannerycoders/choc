@@ -161,10 +161,10 @@ struct choc::ui::DesktopWindow::Pimpl
 
     void windowDestroyEvent()
     {
-        bool shouldQuit = true;
-        if (owner.windowShouldQuit)
-            shouldQuit = owner.windowShouldQuit();
-        if(shouldQuit)
+        bool shouldClose = true;
+        if (owner.windowShouldClose)
+            shouldClose = owner.windowShouldClose();
+        if(shouldClose)
         {
             g_clear_object (&window);
             if (owner.windowClosed != nullptr)
@@ -802,10 +802,10 @@ private:
             case WM_CLOSE:
                 if(auto w = getPimpl (h))
                 {
-                    bool shouldQuit = true;
-                    if(w->owner.windowShouldQuit)
-                        shouldQuit = w->owner.windowShouldQuit();
-                    if(shouldQuit && w->owner.windowClosed != nullptr)
+                    bool shouldClose = true;
+                    if(w->owner.windowShouldClose)
+                        shouldClose = w->owner.windowShouldClose();
+                    if(shouldClose && w->owner.windowClosed != nullptr)
                         w->owner.windowClosed();
                     return 0;
                 }
