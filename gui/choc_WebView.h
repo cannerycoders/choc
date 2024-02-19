@@ -220,6 +220,7 @@ struct choc::ui::WebView::Pimpl
 
                         auto* headers = soup_message_headers_new (SOUP_MESSAGE_HEADERS_RESPONSE);
                         soup_message_headers_append (headers, "Cache-Control", "no-store");
+                        soup_message_headers_append (headers, "Access-Control-Origin", "*");
                         webkit_uri_scheme_response_set_http_headers (response, headers); // response takes ownership of the headers
 
                         webkit_uri_scheme_request_finish_with_response (request, response);
@@ -447,8 +448,18 @@ private:
                 const auto& [bytes, mimeType] = *resource;
 
                 const auto contentLength = std::to_string (bytes.size());
-                const id headerKeys[] = { getNSString ("Content-Length"), getNSString ("Content-Type"), getNSString ("Cache-Control") };
-                const id headerObjects[] = { getNSString (contentLength), getNSString (mimeType), getNSString ("no-store") };
+                const id headerKeys[] = { 
+                    getNSString ("Content-Length"), 
+                    getNSString ("Content-Type"), 
+                    getNSString ("Cache-Control"),
+                    getNSString ("Access-Control-Origin"),
+                };
+                const id headerObjects[] = { 
+                    getNSString (contentLength), 
+                    getNSString (mimeType), 
+                    getNSString ("no-store"),
+                    getNSString ("*")
+                };
                 const auto headerFields = call<id> (getClass ("NSDictionary"),
                                                     "dictionaryWithObjects:forKeys:count:",
                                                     headerObjects,
@@ -1141,7 +1152,8 @@ private:
 
                 const auto mimeTypeHeader = std::string ("Content-Type: ") + mimeType;
                 const auto cacheControlHeader = "Cache-Control: no-store";
-                const std::vector<std::string> headersToConcatenate { mimeTypeHeader, cacheControlHeader };
+                const auto accessControlHeader = "Access-Control-Allow-Origin: *";
+                const std::vector<std::string> headersToConcatenate { mimeTypeHeader, cacheControlHeader, accessControlHeader};
                 const auto headers = createUTF16StringFromUTF8 (choc::text::joinStrings (headersToConcatenate, "\n"));
 
                 if (coreWebViewEnvironment->CreateWebResourceResponse (stream, 200, L"OK", headers.c_str(), std::addressof (response)) != S_OK)
