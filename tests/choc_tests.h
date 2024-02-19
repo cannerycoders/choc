@@ -23,6 +23,7 @@
 #include "../threading/choc_ThreadSafeFunctor.h"
 #include "../threading/choc_TaskThread.h"
 #include "../gui/choc_MessageLoop.h"
+#include "../gui/choc_WebView.h"
 #include "../text/choc_OpenSourceLicenseList.h"
 #include "../audio/choc_AudioFileFormat_MP3.h"
 #include "../audio/choc_AudioFileFormat_FLAC.h"
@@ -69,6 +70,8 @@
 #include "../audio/choc_SampleBufferUtilities.h"
 #include "../audio/choc_AudioMIDIBlockDispatcher.h"
 #include "../javascript/choc_javascript.h"
+#include "../javascript/choc_javascript_Timer.h"
+#include "../javascript/choc_javascript_Console.h"
 
 #include "choc_UnitTest.h"
 
@@ -1646,7 +1649,7 @@ inline void testAudioBuffers (TestProgress& progress)
     }
 
     {
-        CHOC_TEST (Interleaving)
+        CHOC_TEST (InterleavingScratchBufferRoundTrip)
 
         choc::buffer::InterleavingScratchBuffer<float> ib;
         choc::buffer::DeinterleavingScratchBuffer<float> db;
@@ -1671,6 +1674,78 @@ inline void testAudioBuffers (TestProgress& progress)
         test (2, 100);
         test (3, 50);
         test (5, 120);
+    }
+
+    {
+        CHOC_TEST (InterleavingScratchBufferReusedWithDifferentChannelCounts)
+
+        choc::buffer::InterleavingScratchBuffer<float> scratch;
+
+        // start by copying a stereo channel array, then check the underlying storage
+        {
+            constexpr const uint32_t frameCount = 4;
+            const std::array<float, frameCount> left {{ -0.1f, -0.2f, -0.3f, -0.4f }};
+            const std::array<float, frameCount> right {{ 0.1f, 0.2f, 0.3f, 0.4f }};
+            const std::array<const float*, 2> channels {{ left.data(), right.data() }};
+
+            const auto channelCount = static_cast<uint32_t> (channels.size());
+            const auto view = choc::buffer::createChannelArrayView (channels.data(), channelCount, frameCount);
+
+            auto interleaved = scratch.interleave (view);
+
+            CHOC_EXPECT_NEAR (interleaved.data.data[0], -0.1f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[1],  0.1f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[2], -0.2f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[3],  0.2f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[4], -0.3f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[5],  0.3f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[6], -0.4f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[7],  0.4f, 0.0001f);
+        }
+
+        // re-use scratch to copy from a smaller channel view. data is stored according to latest channel count.
+        {
+            constexpr const uint32_t frameCount = 4;
+            const std::array<float, frameCount> left {{ -0.1f, -0.2f, -0.3f, -0.4f }};
+            const std::array<const float*, 1> channels {{ left.data() }};
+
+            const auto channelCount = static_cast<uint32_t> (channels.size());
+            const auto view = choc::buffer::createChannelArrayView (channels.data(), channelCount, frameCount);
+
+            const auto interleaved = scratch.interleave (view);
+
+            CHOC_EXPECT_NEAR (interleaved.data.data[0], -0.1f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[1], -0.2f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[2], -0.3f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[3], -0.4f, 0.0001f);
+        }
+
+        // re-use scratch to copy from a larger channel view. data is stored according to latest channel count.
+        {
+            constexpr const uint32_t frameCount = 4;
+            const std::array<float, frameCount> one {{ -0.1f, -0.2f, -0.3f, -0.4f }};
+            const std::array<float, frameCount> two {{ 0.1f, 0.2f, 0.3f, 0.4f }};
+            const std::array<float, frameCount> three {{ 0.2f, 0.4f, 0.6f, 0.8f }};
+            const std::array<const float*, 3> channels {{ one.data(), two.data(), three.data() }};
+
+            const auto channelCount = static_cast<uint32_t> (channels.size());
+            const auto view = choc::buffer::createChannelArrayView (channels.data(), channelCount, frameCount);
+
+            const auto interleaved = scratch.interleave (view);
+
+            CHOC_EXPECT_NEAR (interleaved.data.data[0], -0.1f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[1],  0.1f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[2],  0.2f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[3], -0.2f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[4],  0.2f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[5],  0.4f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[6], -0.3f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[7],  0.3f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[8],  0.6f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[9], -0.4f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[10], 0.4f, 0.0001f);
+            CHOC_EXPECT_NEAR (interleaved.data.data[11], 0.8f, 0.0001f);
+        }
     }
 
     {
@@ -1941,7 +2016,7 @@ inline void testMIDIFiles (TestProgress& progress)
 }
 
 //==============================================================================
-inline void testJavascript (TestProgress& progress, std::function<choc::javascript::Context()> createContext)
+inline void testJavascript (TestProgress& progress, std::function<choc::javascript::Context()> createContext, bool isDuktape)
 {
     {
         CHOC_TEST (Basics)
@@ -1962,6 +2037,12 @@ inline void testJavascript (TestProgress& progress, std::function<choc::javascri
 
             context.evaluate ("const b = [1, 2, 3, { x: 123, y: 4.3, z: [2, 3], s: \"abc\" }, [4, 5], {}]");
             CHOC_EXPECT_EQ ("[1, 2, 3, {\"x\": 123, \"y\": 4.3, \"z\": [2, 3], \"s\": \"abc\"}, [4, 5], {}]", choc::json::toString (context.evaluate ("b")));
+
+            auto namedChocObj = choc::value::createObject ("foo", "a", 123);
+            context.evaluate ("var c = {}; function setValue (n) { c = n; } ");
+            context.invoke ("setValue", namedChocObj);
+            CHOC_EXPECT_EQ (json::toString (context.evaluate ("c")), json::toString (namedChocObj));
+            CHOC_EXPECT_EQ (std::string (context.evaluate ("c").getObjectClassName()), std::string (namedChocObj.getObjectClassName()));
         }
         CHOC_CATCH_UNEXPECTED_EXCEPTION
     }
@@ -1978,7 +2059,8 @@ inline void testJavascript (TestProgress& progress, std::function<choc::javascri
         catch (const choc::javascript::Error& e)
         {
             CHOC_EXPECT_TRUE (choc::text::contains (e.what(), "unexpected token in expression:")
-                                || choc::text::contains (e.what(), "SyntaxError: parse error"));
+                                || choc::text::contains (e.what(), "SyntaxError: parse error")
+                                || choc::text::contains (e.what(), "Unexpected token '}'"));
         }
     }
 
@@ -2031,17 +2113,173 @@ inline void testJavascript (TestProgress& progress, std::function<choc::javascri
         }
         CHOC_CATCH_UNEXPECTED_EXCEPTION
     }
+
+    if (! isDuktape)
+    {
+        CHOC_TEST (CustomModules)
+
+        try
+        {
+            choc::javascript::Context::ReadModuleContentFn fetchModule
+                = [] (std::string_view name) -> std::optional<std::string>
+            {
+                if (name == "test_module")
+                    return "export function wasOK() { return true; }";
+
+                return {};
+            };
+
+            auto context = createContext();
+            bool worked = false;
+
+            context.registerFunction ("success", [&] (choc::javascript::ArgumentList) -> choc::value::Value
+                                                 {
+                                                     worked = true;
+                                                     return {};
+                                                 });
+
+            context.evaluate (R"(
+                import * as XX from "test_module";
+                if (XX.wasOK()) success();
+            )",
+            std::addressof (fetchModule));
+
+            CHOC_EXPECT_TRUE (worked);
+        }
+        CHOC_CATCH_UNEXPECTED_EXCEPTION
+    }
+
+    {
+        CHOC_TEST (Timers)
+
+        try
+        {
+            auto context = createContext();
+            registerTimerFunctions (context);
+            int result = 0;
+            context.registerFunction ("testDone", [&] (choc::javascript::ArgumentList args) -> choc::value::Value
+                                                   {
+                                                       result = args.get<int> (0);
+                                                       choc::messageloop::stop();
+                                                       return {};
+                                                   });
+
+            auto t = choc::messageloop::Timer (100, [&]
+            {
+                context.evaluate (R"(
+                    var result = 0;
+                    var intID;
+
+                    function i()
+                    {
+                        if (result == 5)
+                            clearInterval (intID);
+                        else
+                            ++result;
+                    }
+
+                    function stop() { testDone (result); }
+
+                    function t1() {}
+
+                    function t2()
+                    {
+                        clearInterval (intID);
+                        setTimeout (stop, 0);
+                    }
+
+                    setTimeout (t2, 600.1);
+                    setTimeout (t1, 100);
+                    intID = setInterval (i, 60.2);
+                )");
+
+                return false;
+            });
+
+            choc::messageloop::run();
+            CHOC_EXPECT_TRUE (result == 4 || result == 5);
+        }
+        CHOC_CATCH_UNEXPECTED_EXCEPTION
+    }
+
+    if (! isDuktape)
+    {
+        CHOC_TEST (Console)
+
+        try
+        {
+            auto context = createContext();
+
+            std::string output;
+
+            registerConsoleFunctions (context, [&] (std::string_view text, auto level)
+            {
+                output += text;
+                output += std::to_string (static_cast<int> (level));
+            });
+
+            context.evaluate (R"(
+                console.log ("log");
+                console.info ("infoa", "infob");
+                console.warn ("warn");
+                console.error ("error");
+                console.debug ("debug");
+            )");
+
+            CHOC_EXPECT_EQ ("log0infoa1infob1warn2error3debug4", output);
+        }
+        CHOC_CATCH_UNEXPECTED_EXCEPTION
+    }
 }
 
 inline void testJavascript (TestProgress& progress)
 {
+   #if CHOC_V8_AVAILABLE
+    CHOC_CATEGORY (Javascript_V8);
+    testJavascript (progress, [] { return choc::javascript::createV8Context(); }, false);
+   #endif
+
     CHOC_CATEGORY (Javascript_Duktape);
-    testJavascript (progress, [] { return choc::javascript::createDuktapeContext(); });
+    testJavascript (progress, [] { return choc::javascript::createDuktapeContext(); }, true);
 
     CHOC_CATEGORY (Javascript_QuickJS);
-    testJavascript (progress, [] { return choc::javascript::createQuickJSContext(); });
+    testJavascript (progress, [] { return choc::javascript::createQuickJSContext(); }, false);
 }
 
+//==============================================================================
+inline void testWebview (TestProgress& progress)
+{
+    CHOC_CATEGORY (WebView);
+    CHOC_TEST (Javascript)
+
+    choc::ui::WebView::Options opts;
+    opts.enableDebugMode = true;
+    choc::ui::WebView webview (opts);
+
+    if (! webview.loadedOK())
+    {
+        std::cout << "WebView was unavailable" << std::endl;
+        return;
+    }
+
+    std::string result;
+
+    webview.bind ("succeeded", [&] (const choc::value::ValueView& args)
+    {
+        result = choc::json::toString (args);
+        choc::messageloop::stop();
+        return choc::value::Value();
+    });
+
+    auto t1 = choc::messageloop::Timer (100, [&]
+    {
+        webview.evaluateJavascript ("succeeded (1234, 5678);");
+        return false;
+    });
+
+    choc::messageloop::run();
+    CHOC_EXPECT_EQ (result, "[1234, 5678]");
+}
 
 //==============================================================================
 inline void testCOM (TestProgress& progress)
@@ -2180,6 +2418,7 @@ inline void testAudioFileRoundTrip (TestProgress& progress, choc::audio::BitDept
     FileFormat format;
     std::string file1;
 
+    try
     {
         auto out = std::make_shared<std::ostringstream>();
         CHOC_EXPECT_FALSE (out->fail());
@@ -2210,9 +2449,13 @@ inline void testAudioFileRoundTrip (TestProgress& progress, choc::audio::BitDept
         writer.reset();
         file1 = out->str();
     }
+    CHOC_CATCH_UNEXPECTED_EXCEPTION
 
+    try
     {
-        auto in = std::make_shared<std::istringstream> (file1);
+        std::string padding = "1234567";
+        auto in = std::make_shared<std::istringstream> (padding + file1);
+        in->seekg (static_cast<std::streamoff> (padding.length()));
 
         choc::audio::AudioFileFormatList formats;
         formats.addFormat<choc::audio::OggAudioFileFormat<false>>();
@@ -2233,6 +2476,7 @@ inline void testAudioFileRoundTrip (TestProgress& progress, choc::audio::BitDept
 
         compareBuffers (reloaded, source);
     }
+    CHOC_CATCH_UNEXPECTED_EXCEPTION
 }
 
 inline void testAudioFileFormat (TestProgress& progress)
@@ -2314,8 +2558,6 @@ inline void testAudioFileFormat (TestProgress& progress)
 inline void testTimers (TestProgress& progress)
 {
     CHOC_CATEGORY (MessageLoop);
-
-    choc::messageloop::initialise();
 
     {
         CHOC_TEST (Timers)
@@ -2416,10 +2658,11 @@ inline void testThreading (TestProgress& progress)
     }
 }
 
-static void testFileWatcher (TestProgress& progress)
+inline void testFileWatcher (TestProgress& progress)
 {
     CHOC_CATEGORY (FileWatcher);
 
+    try
     {
         CHOC_TEST (Watch)
 
@@ -2479,6 +2722,7 @@ static void testFileWatcher (TestProgress& progress)
         std::filesystem::remove_all (testFile);
         waitFor ("destroyed file test1.txt");
     }
+    CHOC_CATCH_UNEXPECTED_EXCEPTION
 }
 
 //==============================================================================
@@ -2489,7 +2733,7 @@ inline bool runAllTests (TestProgress& progress)
 
     emergencyKillThread.start (1000, [&]
     {
-         if (++secondsElapsed > 60)
+         if (++secondsElapsed > 300)
          {
             std::cerr << "FAIL!! Tests timed out and were killed!" << std::endl;
             std::terminate();
@@ -2498,24 +2742,31 @@ inline bool runAllTests (TestProgress& progress)
          return true;
     });
 
-    testFileWatcher (progress);
-    testPlatform (progress);
-    testContainerUtils (progress);
-    testStringUtilities (progress);
-    testFileUtilities (progress);
-    testValues (progress);
-    testJSON (progress);
-    testMIDI (progress);
-    testAudioBuffers (progress);
-    testIntToFloat (progress);
-    testFIFOs (progress);
-    testMIDIFiles (progress);
-    testJavascript (progress);
-    testCOM (progress);
-    testStableSort (progress);
-    testAudioFileFormat (progress);
-    testTimers (progress);
-    testThreading (progress);
+    try
+    {
+        choc::messageloop::initialise();
+
+        testFileWatcher (progress);
+        testPlatform (progress);
+        testContainerUtils (progress);
+        testStringUtilities (progress);
+        testFileUtilities (progress);
+        testValues (progress);
+        testJSON (progress);
+        testMIDI (progress);
+        testAudioBuffers (progress);
+        testIntToFloat (progress);
+        testFIFOs (progress);
+        testMIDIFiles (progress);
+        testJavascript (progress);
+        testWebview (progress);
+        testCOM (progress);
+        testStableSort (progress);
+        testAudioFileFormat (progress);
+        testThreading (progress);
+        testTimers (progress);
+    }
+    CHOC_CATCH_UNEXPECTED_EXCEPTION
 
     progress.printReport();
     return progress.numFails == 0;
