@@ -8746,7 +8746,7 @@ JSValue js_string_codePointRange(JSContext *ctx, JSValueConst this_val,
 
 void *js_malloc_rt(JSRuntime *rt, size_t size);
 void js_free_rt(JSRuntime *rt, void *ptr);
-void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size);
+void *js_realloc_rt(void *rt, void *ptr, size_t size);
 size_t js_malloc_usable_size_rt(JSRuntime *rt, const void *ptr);
 void *js_mallocz_rt(JSRuntime *rt, size_t size);
 
@@ -11247,9 +11247,9 @@ void js_free_rt(JSRuntime *rt, void *ptr)
     rt->mf.js_free(&rt->malloc_state, ptr);
 }
 
-void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size)
+void *js_realloc_rt(void *rt, void *ptr, size_t size)
 {
-    return rt->mf.js_realloc(&rt->malloc_state, ptr, size);
+    return ((JSRuntime*) rt)->mf.js_realloc(&((JSRuntime*) rt)->malloc_state, ptr, size);
 }
 
 size_t js_malloc_usable_size_rt(JSRuntime *rt, const void *ptr)
@@ -64073,6 +64073,8 @@ struct QuickJSContext  : public Context::Pimpl
         JS_SetContextOpaque (context, this);
     }
 
+    void pumpMessageLoop() override {}
+
     void pushObjectOrArray (const choc::value::ValueView& v) override { functionArgs.push_back (valueToJS (v).release()); }
     void pushArg (std::string_view v) override                        { functionArgs.push_back (stringToJS (v).release()); }
     void pushArg (int32_t v) override                                 { functionArgs.push_back (JS_NewInt32   (context, v)); }
@@ -64081,9 +64083,30 @@ struct QuickJSContext  : public Context::Pimpl
     void pushArg (double v) override                                  { functionArgs.push_back (JS_NewFloat64 (context, v)); }
     void pushArg (bool v) override                                    { functionArgs.push_back (JS_NewBool    (context, v)); }
 
-    choc::value::Value evaluate (const std::string& code) override
+    choc::value::Value evaluate (const std::string& code, Context::ReadModuleContentFn* resolveModule) override
     {
+        if (resolveModule != nullptr)
+        {
+            JS_SetModuleLoaderFunc (runtime, nullptr, moduleLoaderFunc, resolveModule);
+            auto result = takeValue (JS_Eval (context, code.c_str(), code.size(), "", JS_EVAL_TYPE_MODULE)).toChocValue();
+            JS_SetModuleLoaderFunc (runtime, nullptr, nullptr, nullptr);
+            return result;
+        }
+
         return takeValue (JS_Eval (context, code.c_str(), code.size(), "", JS_EVAL_TYPE_GLOBAL)).toChocValue();
+    }
+
+    static JSModuleDef* moduleLoaderFunc (JSContext* ctx, const char* module_name, void* resolveModule)
+    {
+        auto content = (*static_cast<Context::ReadModuleContentFn*> (resolveModule)) (std::string_view (module_name));
+
+        if (! content)
+            throw Error ("Cannot find module '" + std::string (module_name) + "'");
+
+        auto result = ValuePtr (JS_Eval (ctx, content->data(), content->length(), module_name,
+                                         JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY), ctx);
+        result.throwIfError();
+        return static_cast<JSModuleDef*> (JS_VALUE_GET_PTR (result.get()));
     }
 
     void prepareForCall (std::string_view functionName, uint32_t) override
@@ -64174,7 +64197,7 @@ struct QuickJSContext  : public Context::Pimpl
             if (JS_IsObject (value))
             {
                 std::vector<std::string> propNames;
-                std::string className;
+                bool hasClassName = false;
 
                 for (auto obj = takeValue (JS_DupValue (context, value));;)
                 {
@@ -64192,7 +64215,7 @@ struct QuickJSContext  : public Context::Pimpl
                         auto nameString = std::string (name);
 
                         if (nameString == objectNameAttribute)
-                            className = std::move (nameString);
+                            hasClassName = true;
                         else
                             propNames.push_back (std::move (nameString));
 
@@ -64211,7 +64234,8 @@ struct QuickJSContext  : public Context::Pimpl
                     obj = std::move (proto);
                 }
 
-                auto o = choc::value::createObject (std::move (className));
+                auto o = choc::value::createObject (hasClassName ? (*this)[objectNameAttribute].toChocValue().toString()
+                                                                 : std::string());
 
                 for (auto& propName : propNames)
                     o.setMember (propName, (*this)[propName.c_str()].toChocValue());

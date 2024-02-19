@@ -21,7 +21,7 @@
 #include "../gui/choc_DesktopWindow.h"
 
 
-static int openDemoWebViewWindow()
+inline int openDemoWebViewWindow()
 {
     choc::ui::setWindowsDPIAwareness(); // For Windows, we need to tell the OS we're high-DPI-aware
 
@@ -35,9 +35,11 @@ static int openDemoWebViewWindow()
 
     choc::ui::WebView webview;
 
+    CHOC_ASSERT (webview.loadedOK());
+
     window.setContent (webview.getViewHandle());
 
-    webview.bind ("eventCallbackFn", [] (const choc::value::ValueView& args) -> choc::value::Value
+    CHOC_ASSERT (webview.bind ("eventCallbackFn", [] (const choc::value::ValueView& args) -> choc::value::Value
     {
         auto message = "eventCallbackFn() called with args: " + choc::json::toString (args);
 
@@ -48,15 +50,15 @@ static int openDemoWebViewWindow()
         });
 
         return choc::value::createString (message);
-    });
+    }));
 
-    webview.bind ("loadCHOCWebsite", [&webview] (const choc::value::ValueView&) -> choc::value::Value
+    CHOC_ASSERT (webview.bind ("loadCHOCWebsite", [&webview] (const choc::value::ValueView&) -> choc::value::Value
     {
         webview.navigate ("https://github.com/Tracktion/choc");
         return {};
-    });
+    }));
 
-    webview.setHTML (R"xxx(
+    CHOC_ASSERT (webview.setHTML (R"xxx(
       <!DOCTYPE html> <html>
         <head> <title>Page Title</title> </head>
         <script>
@@ -73,13 +75,14 @@ static int openDemoWebViewWindow()
 
         <body>
           <h1>CHOC WebView Demo</h1>
-          <p>This is a demo of a choc::webview::WebView window</p>
+          <p>This is a demo of a choc::ui::WebView window</p>
           <p><button onclick="sendEvent()">Click to invoke an event callback</button></p>
           <p><button onclick="loadCHOCWebsite()">Click to visit the CHOC github repo</button></p>
+          <p><input type="file" /></p>
           <p id="eventResultDisplay"></p>
         </body>
       </html>
-    )xxx");
+    )xxx"));
 
     window.toFront();
     choc::messageloop::run();
@@ -102,3 +105,7 @@ int main (int argc, const char** argv)
 // that gets dragged in..
 #include "../javascript/choc_javascript_Duktape.h"
 #include "../javascript/choc_javascript_QuickJS.h"
+
+#if CHOC_V8_AVAILABLE
+ #include "../javascript/choc_javascript_V8.h"
+#endif

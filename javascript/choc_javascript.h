@@ -21,6 +21,7 @@
 
 #include <stdexcept>
 #include <functional>
+#include <optional>
 #include "../containers/choc_Value.h"
 #include "../text/choc_JSON.h"
 
@@ -77,31 +78,51 @@ namespace choc::javascript
         registerFunction(), and call evaluate() or invoke() to execute code or call
         functions directly.
 
-        These contexts are not thread safe, so it's up to the caller to handle thread
-        synchronisation issues.
+        These contexts are not thread-safe, so it's up to the caller to handle thread
+        synchronisation if using a single context from multiple threads.
+
+        They're also definitely not realtime-safe: any of the methods may allocate,
+        block, or make system calls.
     */
     class Context
     {
     public:
         /// To create a Context, use a function such as choc::javascript::createQuickJSContext();
-        Context() = delete;
+        Context() = default;
         Context (Context&&);
         Context& operator= (Context&&);
         ~Context();
 
+        /// When parsing modules, this function is expected to take a path to a module, and
+        /// to return the content of that module, or an empty optional if not found.
+        using ReadModuleContentFn = std::function<std::optional<std::string>(std::string_view)>;
+
         //==============================================================================
         /// Evaluates the given chunk of javascript.
         /// If there are any parse errors, this will throw a choc::javascript::Error exception.
-        choc::value::Value evaluate (const std::string& javascriptCode);
+        /// If the engine supports modules, then providing a value for the resolveModuleContent
+        /// function will treat the code as a module and will call your function to read the
+        /// content of any dependencies.
+        /// None of the methods in this class are either thread-safe or realtime-safe, so you'll
+        /// need to organise your own locking if you're calling into a single Context from
+        /// multiple threads.
+        choc::value::Value evaluate (const std::string& javascriptCode,
+                                     ReadModuleContentFn* resolveModuleContent = nullptr);
 
         /// Attempts to invoke a global function with no arguments.
         /// Any errors will throw a choc::javascript::Error exception.
+        /// None of the methods in this class are either thread-safe or realtime-safe, so you'll
+        /// need to organise your own locking if you're calling into a single Context from
+        /// multiple threads.
         choc::value::Value invoke (std::string_view functionName);
 
         /// Attempts to invoke a global function with the arguments provided.
         /// The arguments can be primitives, strings, choc::value::ValueView or
         /// choc::value::Value types.
         /// Any errors will throw a choc::javascript::Error exception.
+        /// None of the methods in this class are either thread-safe or realtime-safe, so you'll
+        /// need to organise your own locking if you're calling into a single Context from
+        /// multiple threads.
         template <typename... Args>
         choc::value::Value invoke (std::string_view functionName, Args&&... args);
 
@@ -109,6 +130,9 @@ namespace choc::javascript
         /// The objects in the argument list can be primitives, strings, choc::value::ValueView
         /// or choc::value::Value types.
         /// Any errors will throw a choc::javascript::Error exception.
+        /// None of the methods in this class are either thread-safe or realtime-safe, so you'll
+        /// need to organise your own locking if you're calling into a single Context from
+        /// multiple threads.
         template <typename ArgList>
         choc::value::Value invokeWithArgList (std::string_view functionName, const ArgList& args);
 
@@ -117,6 +141,9 @@ namespace choc::javascript
 
         /// Binds a lambda function to a global name so that javascript code can invoke it.
         void registerFunction (const std::string& name, NativeFunction fn);
+
+        /// Pumps the message loop in an engine-specific way - may have no effect on some platforms.
+        void pumpMessageLoop();
 
         //==============================================================================
         /// @internal
@@ -136,6 +163,17 @@ namespace choc::javascript
     /// Creates a Duktape-based context. If you call this, then you'll need to
     /// include choc_javascript_Duktape.h in one (and only one!) of your source files.
     Context createDuktapeContext();
+
+    /// Creates a V8-based context. If you call this, then you'll need to
+    /// make sure that your project also has the V8 header folder in its
+    /// search path, and that you statically link the appropriate V8 libs.
+    Context createV8Context();
+
+    //==============================================================================
+    /// Sanitises a string to provide a version of it that is safe for use as a
+    /// javascript identifier. This involves removing/replacing any illegal
+    /// characters and modifying the string to avoid clashes with reserved words.
+    std::string makeSafeIdentifier (std::string name);
 }
 
 
@@ -168,7 +206,7 @@ struct Context::Pimpl
     virtual ~Pimpl() = default;
 
     virtual void registerFunction (const std::string&, NativeFunction) = 0;
-    virtual choc::value::Value evaluate (const std::string&) = 0;
+    virtual choc::value::Value evaluate (const std::string&, ReadModuleContentFn*) = 0;
     virtual void prepareForCall (std::string_view, uint32_t numArgs) = 0;
     virtual choc::value::Value performCall() = 0;
     virtual void pushObjectOrArray (const choc::value::ValueView&) = 0;
@@ -178,6 +216,7 @@ struct Context::Pimpl
     virtual void pushArg (uint32_t) = 0;
     virtual void pushArg (double) = 0;
     virtual void pushArg (bool) = 0;
+    virtual void pumpMessageLoop() = 0;
 
     void pushArg (const std::string& v)   { pushArg (std::string_view (v)); }
     void pushArg (const char* v)          { pushArg (std::string_view (v)); }
@@ -237,10 +276,49 @@ inline void Context::registerFunction (const std::string& name, NativeFunction f
     pimpl->registerFunction (name, std::move (fn));
 }
 
-inline choc::value::Value Context::evaluate (const std::string& javascriptCode)
+inline choc::value::Value Context::evaluate (const std::string& javascriptCode, ReadModuleContentFn* resolveModule)
 {
     CHOC_ASSERT (pimpl != nullptr); // cannot call this on a moved-from context!
-    return pimpl->evaluate (javascriptCode);
+    return pimpl->evaluate (javascriptCode, resolveModule);
+}
+
+inline void Context::pumpMessageLoop()
+{
+    CHOC_ASSERT (pimpl != nullptr); // cannot call this on a moved-from context!
+    pimpl->pumpMessageLoop();
+}
+
+inline std::string makeSafeIdentifier (std::string s)
+{
+    constexpr static std::string_view reservedWords[] =
+    {
+        "abstract", "arguments", "await", "boolean", "break", "byte", "case", "catch",
+        "char", "class", "const", "continue", "debugger", "default", "delete", "do",
+        "double", "else", "enum", "eval", "export", "extends", "false", "final",
+        "finally", "float", "for", "function", "goto", "if", "implements", "import",
+        "in", "instanceof", "int", "interface", "let", "long", "native", "new",
+        "null", "package", "private", "protected", "public", "return", "short", "static",
+        "super", "switch", "synchronized", "this", "throw", "throws", "transient", "true",
+        "try", "typeof", "var", "void", "volatile", "while", "with", "yield"
+    };
+
+    for (auto& c : s)
+        if (std::string_view (" ,./;:").find (c) != std::string_view::npos)
+            c = '_';
+
+    s.erase (std::remove_if (s.begin(), s.end(), [&] (char c)
+    {
+        return ! ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || (c >= '0' && c <= '9'));
+    }), s.end());
+
+    if (s[0] >= '0' && s[0] <= '9') // Identifiers can't start with a digit
+        s = "_" + s;
+
+    for (auto keyword : reservedWords)
+        if (s == keyword)
+            return s + "_";
+
+    return s;
 }
 
 } // namespace choc::javascript
@@ -250,7 +328,7 @@ inline choc::value::Value Context::evaluate (const std::string& javascriptCode)
 #ifdef CHOC_JAVASCRIPT_IMPLEMENTATION
  // The way the javascript classes work has changed: instead of
  // setting CHOC_JAVASCRIPT_IMPLEMENTATION in one of your source files, just
- // include the actual engine that you want to use, e.g. choc_javasscript_QuickJS.h
+ // include the actual engine that you want to use, e.g. choc_javascript_QuickJS.h
  // in (only!) one of your source files, and use that to create instances of that engine.
  #error "CHOC_JAVASCRIPT_IMPLEMENTATION is deprecated"
 #endif
