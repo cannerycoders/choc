@@ -82,6 +82,11 @@ public:
         // this empty for default behaviour.
         std::string customUserAgent;
 
+        /// Optional platform-specific uri scheme which can be used to override
+        /// the default. Leave this empty for default behaviour.
+        std::string customURIScheme;
+        std::string customURIHome;
+
         /// Serve resources to the browser from a C++ callback function.
         /// This can effectively be used to implement a basic web server,
         /// serving resources to the browser in any way the client code chooses.
@@ -261,14 +266,17 @@ struct choc::ui::WebView::Pimpl
                     g_error_free (error);
                 }
             };
-
-            #ifdef WEBVIEW_URISCHEME
-            webkit_web_context_register_uri_scheme (webviewContext, WEBVIEW_URISCHEME, onResourceRequested, this, nullptr);
-            navigate(WEBVIEW_URIHOME);
-            #else
-            webkit_web_context_register_uri_scheme (webviewContext, "choc", onResourceRequested, this, nullptr);
-            navigate ("choc://choc.choc/");
-            #endif
+            if(options.customURIScheme.empty())
+            {
+                webkit_web_context_register_uri_scheme (webviewContext, "choc", onResourceRequested, this, nullptr);
+                navigate ("choc://choc.choc/");
+            }
+            else
+            {
+                webkit_web_context_register_uri_scheme (webviewContext, 
+                    options.customURIScheme, onResourceRequested, this, nullptr);
+                navigate (options.customURIHome);
+            }
         }
 
         gtk_widget_show_all (webview);
@@ -371,11 +379,11 @@ struct choc::ui::WebView::Pimpl
 
         if (options.fetchResource)
         {
-            #ifdef WEBVIEW_URISCHEME
-            call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString (WEBVIEW_URISCHEME));
-            #else
-            call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString ("choc"));
-            #endif
+            if(options.customURIScheme.empty())
+                call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString ("choc"));
+            else
+                call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, 
+                            getNSString (options.customURIScheme));
         }
 
         webview = call<id> (allocateWebview(), "initWithFrame:configuration:", CGRect(), config);
@@ -391,11 +399,10 @@ struct choc::ui::WebView::Pimpl
 
         if (options.fetchResource)
         {
-            #ifdef WEBVIEW_URISCHEME
-            navigate (WEBVIEW_URIHOME);
-            #else
-            navigate ("choc://choc.choc/");
-            #endif
+            if(options.customURIScheme.empty())
+                navigate ("choc://choc.choc/");
+            else
+                navigate (options.customURIHome);
         }
     }
 
@@ -1083,6 +1090,8 @@ struct WebView::Pimpl
         if (hwnd.hwnd == nullptr)
             return;
 
+        if(!options.customURIScheme.empty())
+            resourceRequestFilterUriPrefix = options.customURIScheme;
         SetWindowLongPtr (hwnd, GWLP_USERDATA, (LONG_PTR) this);
 
         if (createEmbeddedWebView())
@@ -1146,11 +1155,8 @@ private:
     WindowClass windowClass { L"CHOCWebView", (WNDPROC) wndProc };
     HWNDHolder hwnd;
 
-    #ifdef WEBVIEW_URISCHEME
-    const std::string resourceRequestFilterUriPrefix = WEBVIEW_URISCHEME;
-    #else
-    const std::string resourceRequestFilterUriPrefix = "https://choc.localhost/";
-    #endif
+    // may be overriden during construction via options
+    std::string resourceRequestFilterUriPrefix = "https://choc.localhost/";
 
     static Pimpl* getPimpl (HWND h)     { return (Pimpl*) GetWindowLongPtr (h, GWLP_USERDATA); }
 
