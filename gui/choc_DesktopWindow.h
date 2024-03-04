@@ -423,9 +423,9 @@ struct DesktopWindow::Pimpl
             class_addMethod (delegateClass, sel_registerName ("windowShouldClose:"),
                             (IMP) (+[](id self, SEL, id) -> BOOL
                             {
+                                BOOL shouldClose = TRUE;
                                 CHOC_AUTORELEASE_BEGIN
                                 auto& p = getPimplFromContext (self);
-                                BOOL shouldClose = TRUE;
                                 if(auto shouldCloseFn = p.owner.windowShouldClose)
                                     shouldClose = shouldCloseFn();
                                 if(shouldClose)

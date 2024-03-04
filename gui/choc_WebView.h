@@ -377,13 +377,13 @@ struct choc::ui::WebView::Pimpl
         call<void> (manager, "retain");
         call<void> (manager, "addScriptMessageHandler:name:", delegate, getNSString ("external"));
 
-        if (options.fetchResource)
+        if (options->fetchResource)
         {
-            if(options.customURIScheme.empty())
+            if(options->customURIScheme.empty())
                 call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, getNSString ("choc"));
             else
                 call<void> (config, "setURLSchemeHandler:forURLScheme:", delegate, 
-                            getNSString (options.customURIScheme));
+                            getNSString (options->customURIScheme));
         }
 
         webview = call<id> (allocateWebview(), "initWithFrame:configuration:", CGRect(), config);
@@ -397,13 +397,15 @@ struct choc::ui::WebView::Pimpl
 
         call<void> (config, "release");
 
-        if (options.fetchResource)
+        if (options->fetchResource)
         {
-            if(options.customURIScheme.empty())
+            if(options->customURIScheme.empty())
                 navigate ("choc://choc.choc/");
             else
-                navigate (options.customURIHome);
+                navigate (options->customURIHome);
         }
+        
+        CHOC_AUTORELEASE_END
     }
 
     ~Pimpl()
