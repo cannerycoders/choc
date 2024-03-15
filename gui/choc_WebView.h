@@ -274,7 +274,7 @@ struct choc::ui::WebView::Pimpl
             else
             {
                 webkit_web_context_register_uri_scheme (webviewContext, 
-                    options.customURIScheme, onResourceRequested, this, nullptr);
+                    options.customURIScheme.c_str(), onResourceRequested, this, nullptr);
                 navigate (options.customURIHome);
             }
         }
