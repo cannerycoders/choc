@@ -82,11 +82,6 @@ public:
         // this empty for default behaviour.
         std::string customUserAgent;
 
-        /// Optional platform-specific uri scheme which can be used to override
-        /// the default. Leave this empty for default behaviour.
-        std::string customURIScheme;
-        std::string customURIHome;
-
         /// If you provide a fetchResource function, it is expected to return this
         /// object, which is simply the raw content of the resource, and its MIME type.
         struct Resource
