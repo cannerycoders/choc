@@ -1193,8 +1193,8 @@ private:
     HWNDHolder hwnd;
 
     // may be overriden during construction via options
-    const std::string resourceRequestFilterUriPrefix = "https://choc.localhost/";
-    const std::string setHTMLUri                     = "https://choc.localhost/setHTML";
+    std::string resourceRequestFilterUriPrefix = "https://choc.localhost/";
+    std::string setHTMLUri                     = "https://choc.localhost/setHTML";
     WebView::Options::Resource pageHTML;
 
     static Pimpl* getPimpl (HWND h)     { return (Pimpl*) GetWindowLongPtr (h, GWLP_USERDATA); }

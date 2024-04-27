@@ -838,7 +838,7 @@ private:
                     if(w->owner.windowShouldClose)
                         shouldClose = w->owner.windowShouldClose();
                     if(shouldClose)
-                        w->handleClose()
+                        w->handleClose();
                     return 0;
                 }
                 break;
