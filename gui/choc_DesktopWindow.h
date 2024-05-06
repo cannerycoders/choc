@@ -337,6 +337,13 @@ struct DesktopWindow::Pimpl
     }
 
     void* getWindowHandle() const     { return (CHOC_OBJC_CAST_BRIDGED void*) window; }
+    void* getContentHandle() const     
+    { 
+        CHOC_AUTORELEASE_BEGIN
+        id view = objc::call<id>(window, "contentView");
+        CHOC_AUTORELEASE_END
+        return (void*) view;
+    }
 
     void setWindowTitle (const std::string& newTitle)
     {
