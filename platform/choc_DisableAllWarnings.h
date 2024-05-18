@@ -69,6 +69,7 @@
  #pragma GCC diagnostic ignored "-Wdeprecated-copy-with-dtor"
  #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
  #pragma GCC diagnostic ignored "-Wdeprecated"
+ #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
  #ifndef __MINGW32__
   #pragma GCC diagnostic ignored "-Wredundant-move"
@@ -78,8 +79,10 @@
  #pragma warning (disable: 2440)
  #pragma warning (disable: 2664)
  #pragma warning (disable: 4244)
+ #pragma warning (disable: 4701)
  #pragma warning (disable: 4702)
  #pragma warning (disable: 4706)
+ #pragma warning (disable: 4722)
  #pragma warning (disable: 6011)
  #pragma warning (disable: 6246)
  #pragma warning (disable: 6255)
