@@ -137,6 +137,8 @@ void setWindowsDPIAwareness();
 
 #if CHOC_LINUX
 
+#include <gdk/gdk.h>
+
 struct choc::ui::DesktopWindow::Pimpl
 {
     Pimpl (DesktopWindow& w, Bounds bounds)  : owner (w)
@@ -150,8 +152,12 @@ struct choc::ui::DesktopWindow::Pimpl
         destroyHandlerID = g_signal_connect (G_OBJECT (window), "delete-event",
                                     G_CALLBACK (+[](GtkWidget*, GdkEvent *event, gpointer arg)
                                     {
-                                        static_cast<Pimpl*> (arg)->windowDestroyEvent();
-                                        return TRUE; // handled...
+                                        bool shouldClose = true;
+                                        static_cast<Pimpl*> (arg)->windowDestroyEvent(shouldClose);
+                                        if(shouldClose)
+                                            return 0;
+                                        else
+                                            return 1; // handled...
                                     }), this);
         setBounds (bounds);
         setVisible (true);
@@ -165,9 +171,8 @@ struct choc::ui::DesktopWindow::Pimpl
         g_clear_object (&window);
     }
 
-    void windowDestroyEvent()
+    void windowDestroyEvent(bool &shouldClose)
     {
-        bool shouldClose = true;
         if (owner.windowShouldClose)
         {
             shouldClose = owner.windowShouldClose();
@@ -176,7 +181,10 @@ struct choc::ui::DesktopWindow::Pimpl
         {
             g_clear_object (&window);
             if (owner.windowClosed != nullptr)
+            {
                 owner.windowClosed();
+                window = nullptr;
+            }
         }
     }
 
@@ -215,6 +223,8 @@ struct choc::ui::DesktopWindow::Pimpl
 
     void setVisible (bool visible)
     {
+        if(window == nullptr) return;
+
         if (visible)
             gtk_widget_show_all (window);
         else
@@ -269,6 +279,7 @@ struct choc::ui::DesktopWindow::Pimpl
     GtkWidget* window = {};
     GtkWidget* content = {};
     unsigned long destroyHandlerID = 0;
+    uint32_t xxid;
 };
 
 inline void choc::ui::setWindowsDPIAwareness() {}
