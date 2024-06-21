@@ -20,6 +20,7 @@
 #define CHOC_DESKTOPWINDOW_HEADER_INCLUDED
 
 #include "../platform/choc_Platform.h"
+#include <iostream>
 
 
 //==============================================================================
@@ -146,12 +147,12 @@ struct choc::ui::DesktopWindow::Pimpl
         window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
         g_object_ref_sink (G_OBJECT (window));
 
-        destroyHandlerID = g_signal_connect (G_OBJECT (window), "destroy",
-                                             G_CALLBACK (+[](GtkWidget*, gpointer arg)
-                                             {
-                                                 static_cast<Pimpl*> (arg)->windowDestroyEvent();
-                                             }),
-                                             this);
+        destroyHandlerID = g_signal_connect (G_OBJECT (window), "delete-event",
+                                    G_CALLBACK (+[](GtkWidget*, GdkEvent *event, gpointer arg)
+                                    {
+                                        static_cast<Pimpl*> (arg)->windowDestroyEvent();
+                                        return TRUE; // handled...
+                                    }), this);
         setBounds (bounds);
         setVisible (true);
     }
@@ -168,7 +169,9 @@ struct choc::ui::DesktopWindow::Pimpl
     {
         bool shouldClose = true;
         if (owner.windowShouldClose)
+        {
             shouldClose = owner.windowShouldClose();
+        }
         if(shouldClose)
         {
             g_clear_object (&window);
