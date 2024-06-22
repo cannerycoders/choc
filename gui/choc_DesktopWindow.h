@@ -209,16 +209,19 @@ struct choc::ui::DesktopWindow::Pimpl
 
         if(view == nullptr)
         {
-            GtkWidget *w = gtk_frame_new("my frame");
-            gtk_widget_set_size_request(w, 300, 300);
-            gtk_widget_set_visible(w, true);
-            g_object_ref_sink(w);
-            view = (void *) w;
+            // GtkWidget *w = gtk_frame_new("my frame");
+            // gtk_widget_set_size_request(w, 300, 300);
+            // gtk_widget_set_visible(w, true);
+            // g_object_ref_sink(w);
+            // view = (void *) w;
+            content = nullptr;
         }
-
-        content = GTK_WIDGET (view);
-        gtk_container_add (GTK_CONTAINER (window), content);
-        gtk_widget_grab_focus (content);
+        else
+        {
+            content = GTK_WIDGET (view);
+            gtk_container_add (GTK_CONTAINER (window), content);
+            gtk_widget_grab_focus (content);
+        }
     }
 
     void setVisible (bool visible)
