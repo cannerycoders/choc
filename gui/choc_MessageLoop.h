@@ -98,7 +98,7 @@ namespace choc::messageloop
 
         /// Stops and clears the timer. (You can also clear a Timer
         /// by assigning an empty Timer to it).
-        void clear()                    { pimpl.reset(); }
+        void clear();
 
         /// Returns true if the Timer has been initialised with
         /// a callback, or false if it's just an empty object.
@@ -108,6 +108,16 @@ namespace choc::messageloop
         struct Pimpl;
         std::unique_ptr<Pimpl> pimpl;
     };
+
+    //==============================================================================
+    /// Triggers a one-shot timer callback of a given lambda function after a given
+    /// interval.
+    /// This uses the Timer class, but saves you needing to keep a Timer object alive,
+    /// if you just need a fire-and-forget event.
+    /// The callback function should just be a void lambda.
+    template <typename Callback>
+    void setTimeout (uint32_t intervalMillisecs, Callback&& callbackFunction);
+
 }
 
 
@@ -223,75 +233,9 @@ struct Timer::Pimpl
 
 #include <thread>
 #include <unordered_set>
-#include <objc/runtime.h>
-#include <objc/message.h>
 #include <dispatch/dispatch.h>
-
 #include <type_traits>
-
-namespace choc::objc
-{
-    static inline id getClass (const char* s)              { return (id) objc_getClass (s); }
-
-    template <typename ReturnType, typename... Args>
-    static ReturnType call (id target, const char* selector, Args... args)
-    {
-        constexpr const auto msgSend = ([]
-        {
-          #if defined (__x86_64__)
-            if constexpr (std::is_void_v<ReturnType>)
-                return objc_msgSend;
-            else if constexpr (sizeof (ReturnType) > 16)
-                return objc_msgSend_stret;
-            else
-                return objc_msgSend;
-          #elif defined (__arm64__)
-            return objc_msgSend;
-          #else
-            #error "Unknown or unsupported architecture!"
-          #endif
-        })();
-
-        return reinterpret_cast<ReturnType(*)(id, SEL, Args...)> (msgSend) (target, sel_registerName (selector), args...);
-    }
-
-    static inline std::string getString (id nsString)      { return std::string (call<const char*> (nsString, "UTF8String")); }
-    static inline id getNSString (const char* s)           { return call<id> (getClass ("NSString"), "stringWithUTF8String:", s); }
-    static inline id getNSString (const std::string& s)    { return getNSString (s.c_str()); }
-    static inline id getNSNumberBool (bool b)              { return call<id> (getClass ("NSNumber"), "numberWithBool:", (BOOL) b); }
-    static inline id getSharedNSApplication()              { return call<id> (getClass ("NSApplication"), "sharedApplication"); }
-
-    static inline Class createDelegateClass (const char* baseClass, const char* root)
-    {
-        auto time = std::chrono::high_resolution_clock::now().time_since_epoch();
-        auto micros = std::chrono::duration_cast<std::chrono::microseconds> (time).count();
-        auto uniqueDelegateName = root + std::to_string (static_cast<uint32_t> (micros));
-
-        auto c = objc_allocateClassPair (objc_getClass (baseClass), uniqueDelegateName.c_str(), 0);
-        CHOC_ASSERT (c);
-        return c;
-    }
-
-   #if __has_feature(objc_arc)
-    #define CHOC_AUTORELEASE_BEGIN @autoreleasepool {
-    #define CHOC_AUTORELEASE_END }
-    #define CHOC_OBJC_CAST_BRIDGED __bridge
-   #else
-    struct AutoReleasePool
-    {
-        AutoReleasePool()  { pool = call<id> (getClass ("NSAutoreleasePool"), "new"); }
-        ~AutoReleasePool() { call<void> (pool, "release"); }
-
-        id pool;
-    };
-
-    #define CHOC_MAKE_AR_NAME2(line)  autoreleasePool_ ## line
-    #define CHOC_MAKE_AR_NAME1(line)  CHOC_MAKE_AR_NAME2(line)
-    #define CHOC_AUTORELEASE_BEGIN { choc::objc::AutoReleasePool CHOC_MAKE_AR_NAME1(__LINE__);
-    #define CHOC_AUTORELEASE_END }
-    #define CHOC_OBJC_CAST_BRIDGED
-   #endif
-}
+#include "../platform/choc_ObjectiveCHelpers.h"
 
 namespace choc::messageloop
 {
@@ -328,8 +272,8 @@ inline void stop()
         // After sending the stop message, we need to post a dummy event to
         // kick the message loop, otherwise it can just sit there and hang
         struct NSPoint { double x = 0, y = 0; };
-        id dummyEvent = call<id> (getClass ("NSEvent"), "otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:",
-                                  NSEventTypeApplicationDefined, NSPoint(), 0, 0, 0, nullptr, (short) 0, 0, 0);
+        id dummyEvent = callClass<id> ("NSEvent", "otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:",
+                                       NSEventTypeApplicationDefined, NSPoint(), 0, 0, 0, nullptr, (short) 0, 0, 0);
         call<void> (getSharedNSApplication(), "postEvent:atStart:", dummyEvent, YES);
         CHOC_AUTORELEASE_END
     });
@@ -594,6 +538,21 @@ inline Timer::Timer (uint32_t interval, Callback&& cb)
     CHOC_ASSERT (cb != nullptr); // The callback must be a valid function!
     pimpl = std::make_unique<Pimpl> (std::move (cb), interval);
 }
+
+template <typename Callback>
+void setTimeout (uint32_t intervalMillisecs, Callback&& callback)
+{
+    auto t = new Timer();
+
+    *t = Timer (intervalMillisecs, [t, c = std::move (callback)]
+    {
+        c();
+        postMessage ([t] { delete t; });
+        return false;
+    });
+}
+
+inline void Timer::clear()   { pimpl.reset(); }
 
 } // namespace choc::messageloop
 
