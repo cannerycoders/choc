@@ -925,6 +925,7 @@ private:
     static WebViewDLL getWebview2LoaderDLL();
  }
 #else
+ #define CHOC_USE_INTERNAL_WEBVIEW_DLL 0
  namespace choc::ui
  {
     using WebViewDLL = choc::file::DynamicLibrary;
@@ -1299,7 +1300,13 @@ struct WebView::Pimpl
     Pimpl (WebView& v, const Options& opts)
         : owner (v), options (opts)
     {
-        CoInitialize (nullptr);
+        HRESULT costat = CoInitialize (nullptr);
+        if(!SUCCEEDED(costat))
+        {
+            std::cerr << "choc_WebView CoInitialize failed unexpectedly.\n";
+            DWORD errorCode = GetLastError();
+            std::cout << "Detailed Error Code: " << std::hex << errorCode << std::endl;
+        }
 
         // You cam define this macro to provide a custom way of getting a
         // choc::file::DynamicLibrary that contains the redistributable
@@ -1468,7 +1475,30 @@ private:
             if (auto createCoreWebView2EnvironmentWithOptions = (decltype(&CreateCoreWebView2EnvironmentWithOptions))
                                                                    webviewDLL.findFunction ("CreateCoreWebView2EnvironmentWithOptions"))
             {
-                if (createCoreWebView2EnvironmentWithOptions (nullptr, userDataFolder.c_str(), nullptr, handler) == S_OK)
+                // browser_dir, if provided, must include eg msedgewebview2.exe
+                wchar_t const *key = L"WEBVIEW2_BROWSER_DIR"; // Example environment variable
+                wchar_t const *browserFolder = _wgetenv(key);
+                if(browserFolder)
+                {
+                    #ifdef DEBUG
+                    std::wcerr << L"Webview2 using custom browser dir '" 
+                              << browserFolder << L"' user:'"  << userDataFolder
+                              << L"'\n";
+                    #endif
+                }
+                auto wverr = createCoreWebView2EnvironmentWithOptions(
+                                browserFolder,  // null means use newest
+                                userDataFolder.c_str(), 
+                                nullptr/*environment options*/, 
+                                handler);
+                if(wverr != S_OK)
+                {
+                    std::cerr << "choc_WebView problem creating core webview2 environment " << wverr << "\n";
+                    DWORD errorCode = GetLastError();
+                    std::cerr << "Detailed Error Code: " << std::hex << errorCode << std::endl;
+                    return false;
+                }
+                else
                 {
                     MSG msg;
                     auto timeoutTimer = SetTimer ({}, {}, 6000, {});
@@ -1811,11 +1841,14 @@ private:
 
         GetModuleFileNameW (nullptr, currentExePath, MAX_PATH);
         auto currentExeName = std::wstring (currentExePath);
-        auto lastSlash = currentExeName.find_last_of (L'\\');
+        auto lastChar = currentExeName.find_last_of (L'\\');
 
-        if (lastSlash != std::wstring::npos)
-            currentExeName = currentExeName.substr (lastSlash + 1);
-
+        if (lastChar != std::wstring::npos)
+            currentExeName = currentExeName.substr (lastChar + 1);
+        lastChar = currentExeName.find_last_of(L'.');
+        if (lastChar != std::wstring::npos)
+            currentExeName = currentExeName.substr(0, lastChar);
+        
         if (SHGetFolderPathW (nullptr, CSIDL_APPDATA, nullptr, 0, dataPath) == S_OK)
         {
             auto path = std::wstring (dataPath);
@@ -2096,6 +2129,7 @@ inline std::unique_ptr<juce::Component> createJUCEWebViewHolder (choc::ui::WebVi
 
 #if CHOC_WINDOWS
 
+#if CHOC_USE_INTERNAL_WEBVIEW_DLL 
 #ifdef CHOC_REGISTER_OPEN_SOURCE_LICENCE
  CHOC_REGISTER_OPEN_SOURCE_LICENCE (WebView2Loader, R"(
 ==============================================================================
@@ -5897,6 +5931,7 @@ inline choc::ui::WebViewDLL choc::ui::getWebview2LoaderDLL()
     return choc::memory::MemoryDLL (dllData, sizeof (dllData));
 }
 
+#endif
 #endif
 
 #endif // CHOC_WEBVIEW_HEADER_INCLUDED
