@@ -44,8 +44,8 @@ namespace choc::ui
     - On OSX, you'll need to add the `WebKit` framework to your project
 
     - On Linux, you'll need to:
-       1. Install the libgtk-3-dev and libwebkit2gtk-4.0-dev packages.
-       2. Link the gtk+3.0 and webkit2gtk-4.0 libraries in your build.
+       1. Install the libgtk-3-dev and libwebkit2gtk-4.1-dev packages.
+       2. Link the gtk+3.0 and webkit2gtk-4.1 libraries in your build.
           You might want to have a look inside choc/tests/CMakeLists.txt for
           an example of how to add those packages to your build without too
           much fuss.
@@ -2127,7 +2127,7 @@ inline std::unique_ptr<juce::Component> createJUCEWebViewHolder (choc::ui::WebVi
 
 */
 
-#if CHOC_WINDOWS
+#if CHOC_USE_INTERNAL_WEBVIEW_DLL
 
 #if CHOC_USE_INTERNAL_WEBVIEW_DLL 
 #ifdef CHOC_REGISTER_OPEN_SOURCE_LICENCE
@@ -5932,6 +5932,6 @@ inline choc::ui::WebViewDLL choc::ui::getWebview2LoaderDLL()
 }
 
 #endif
-#endif
+#endif // CHOC_USE_INTERNAL_WEBVIEW_DLL
 
 #endif // CHOC_WEBVIEW_HEADER_INCLUDED
