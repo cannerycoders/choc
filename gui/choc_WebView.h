@@ -44,8 +44,8 @@ namespace choc::ui
     - On OSX, you'll need to add the `WebKit` framework to your project
 
     - On Linux, you'll need to:
-       1. Install the libgtk-3-dev and libwebkit2gtk-4.0-dev packages.
-       2. Link the gtk+3.0 and webkit2gtk-4.0 libraries in your build.
+       1. Install the libgtk-3-dev and libwebkit2gtk-4.1-dev packages.
+       2. Link the gtk+3.0 and webkit2gtk-4.1 libraries in your build.
           You might want to have a look inside choc/tests/CMakeLists.txt for
           an example of how to add those packages to your build without too
           much fuss.
@@ -129,6 +129,20 @@ public:
         /// otherwise wouldn't work by default. This lets you turn that off if you
         /// need to.
         bool enableDefaultClipboardKeyShortcutsInSafari = true;
+
+        /// ResponseModifier can be used to modify response headers
+        /// after a successful resource-fetch.  It may be of use to
+        /// deal with online servers that don't establish a
+        /// Access-Control-Allow-Origin policy.
+        class ResponseModifierCtx
+        {
+        public:
+            virtual ~ResponseModifierCtx() {};
+            virtual void AppendHeader(char const *key, char const *val) = 0;
+            std::string uri;
+        };
+        using ResponseModifier = std::function<void(ResponseModifierCtx *)>;
+        ResponseModifier responseModifier;
     };
 
     /// Creates a WebView with default options
@@ -1404,6 +1418,20 @@ private:
     HWNDHolder hwnd;
     std::string defaultURI, setHTMLURI;
     WebView::Options::Resource pageHTML;
+    class ResponseModCtxWin : public Options::ResponseModifierCtx
+    {
+    public:
+        void Init(std::string_view uri, ICoreWebView2WebResourceRequestedEventArgs* args)
+        {
+            this->uri = uri;
+            this->args = args;
+        }
+        void AppendHeader(char const *key, char const *val) override
+        {
+        }
+        std::string_view uri;
+        ICoreWebView2WebResourceRequestedEventArgs* args;
+    } responseModCtxWin;
 
     //==============================================================================
     template <typename Type>
@@ -1517,8 +1545,10 @@ private:
                     if (coreWebView == nullptr)
                         return false;
 
-                    const auto wildcardFilter = createUTF16StringFromUTF8 (defaultURI + "*");
-                    coreWebView->AddWebResourceRequestedFilter (wildcardFilter.c_str(), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+                    // we want a callback on all request, then in handler, we select between
+                    // local and remote.
+                    // const auto wildcardFilter = createUTF16StringFromUTF8 (defaultURI + "*");
+                    coreWebView->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
 
                     EventRegistrationToken token;
                     coreWebView->add_WebResourceRequested (handler, std::addressof (token));
@@ -1631,22 +1661,36 @@ private:
             if (coreWebViewEnvironment == nullptr)
                 return E_FAIL;
 
-            ICoreWebView2WebResourceRequest* request = {};
-            ScopedExit cleanupRequest (makeCleanupIUnknown (request));
-
-            if (args->get_Request (std::addressof (request)) != S_OK)
-                return E_FAIL;
-
             LPWSTR uri = {};
             ScopedExit cleanupUri (makeCleanup (uri, CoTaskMemFree));
 
+            ICoreWebView2WebResourceRequest* request = {};
+            ScopedExit cleanupRequest (makeCleanupIUnknown (request));
+
             if (request->get_Uri (std::addressof (uri)) != S_OK)
+                return E_FAIL;
+
+            std::string uri2 = createUTF8FromUTF16 (uri);
+            if(uri2.find(defaultURI) != 0) 
+            {
+                // it's a remote resource
+                if(options.responseModifier)
+                {
+                    this->responseModCtxWin.Init(uri2, args);
+                    options.responseModifier(&this->responseModCtxWin);
+                }
+                return S_OK;
+            }
+
+            // it's a local resource
+
+            if (args->get_Request (std::addressof (request)) != S_OK)
                 return E_FAIL;
 
             ICoreWebView2WebResourceResponse* response = {};
             ScopedExit cleanupResponse (makeCleanupIUnknown (response));
 
-            if (const auto resource = fetchResourceOrPageHTML (createUTF8FromUTF16 (uri)))
+            if (const auto resource = fetchResourceOrPageHTML (uri2))
             {
                 const auto makeMemoryStream = [](const auto* data, auto length) -> IStream*
                 {
@@ -2127,7 +2171,7 @@ inline std::unique_ptr<juce::Component> createJUCEWebViewHolder (choc::ui::WebVi
 
 */
 
-#if CHOC_WINDOWS
+#if CHOC_USE_INTERNAL_WEBVIEW_DLL
 
 #if CHOC_USE_INTERNAL_WEBVIEW_DLL 
 #ifdef CHOC_REGISTER_OPEN_SOURCE_LICENCE
@@ -5932,6 +5976,6 @@ inline choc::ui::WebViewDLL choc::ui::getWebview2LoaderDLL()
 }
 
 #endif
-#endif
+#endif // CHOC_USE_INTERNAL_WEBVIEW_DLL
 
 #endif // CHOC_WEBVIEW_HEADER_INCLUDED
