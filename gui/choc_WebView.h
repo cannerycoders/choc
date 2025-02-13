@@ -1518,7 +1518,7 @@ private:
                         return false;
 
                     const auto wildcardFilter = createUTF16StringFromUTF8 (defaultURI + "*");
-                    coreWebView->AddWebResourceRequestedFilter(wilecardFilter.c_str(), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+                    coreWebView->AddWebResourceRequestedFilter (wildcardFilter.c_str(), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
 
                     EventRegistrationToken token;
                     coreWebView->add_WebResourceRequested (handler, std::addressof (token));
@@ -1633,11 +1633,12 @@ private:
 
             ICoreWebView2WebResourceRequest* request = {};
             ScopedExit cleanupRequest (makeCleanupIUnknown (request));
--            if (args->get_Request (std::addressof (request)) != S_OK)
+            if (args->get_Request (std::addressof (request)) != S_OK)
                 return E_FAIL;
 
             LPWSTR uri = {};
--           ScopedExit cleanupUri (makeCleanup (uri, CoTaskMemFree));
+            ScopedExit cleanupUri (makeCleanup (uri, CoTaskMemFree));
+
             if (request->get_Uri (std::addressof (uri)) != S_OK)
                 return E_FAIL;
 
