@@ -1517,7 +1517,26 @@ private:
                     if (coreWebView == nullptr)
                         return false;
 
-                    const auto wildcardFilter = createUTF16StringFromUTF8 (defaultURI + "*");
+                    // db: work-in-progress to manipulate headers on remote responses.
+                    //  todo: remote responses take time, so we need to extend choc webview to support
+                    //   webview->add_WebResourceResponseReceived(
+                    // Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>(
+                    //     [](ICoreWebView2* sender, ICoreWebView2WebResourceResponseReceivedEventArgs* args) -> HRESULT {
+                    //         // At this point, the response is guaranteed to exist
+                    //         ComPtr<ICoreWebView2WebResourceResponse> response;
+                    //         args->get_Response(&response);
+                    //         if (response) {
+                    //             // Modify response headers or other properties
+                    //             ComPtr<ICoreWebView2HttpResponseHeaders> headers;
+                    //             response->get_Headers(&headers);
+                    //             headers->Append(L"X-Modified-By", L"MyProxyServer");
+                    //         }
+                    // 
+                    //     return S_OK;
+                    // }).Get(), nullptr);
+
+                    // const auto wildcardFilter = createUTF16StringFromUTF8 (defaultURI + "*");
+                    const auto wildcardFilter = createUTF16StringFromUTF8 ("*");
                     coreWebView->AddWebResourceRequestedFilter (wildcardFilter.c_str(), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
 
                     EventRegistrationToken token;
@@ -1642,10 +1661,18 @@ private:
             if (request->get_Uri (std::addressof (uri)) != S_OK)
                 return E_FAIL;
 
+            auto uri8 = createUTF8FromUTF16(uri);
+
             ICoreWebView2WebResourceResponse* response = {};
             ScopedExit cleanupResponse (makeCleanupIUnknown (response));
 
-            if (const auto resource = fetchResourceOrPageHTML (createUTF8FromUTF16(uri)))
+            if(uri8.rfind(defaultURI, 0) != 0)
+            {
+                // an offsite request
+                std::cerr << "offsite: " << uri8 << " doesn't start with " << defaultURI << "\n";
+            }
+            else
+            if (const auto resource = fetchResourceOrPageHTML (uri8))
             {
                 const auto makeMemoryStream = [](const auto* data, auto length) -> IStream*
                 {
