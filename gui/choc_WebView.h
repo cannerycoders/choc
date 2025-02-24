@@ -1518,6 +1518,12 @@ private:
                         return false;
 
                     // db: work-in-progress to manipulate headers on remote responses.
+                    //  goal is to intercept response headers to remedy:
+                    //   ERROR: Access to fetch at 'https://zenquotes.io/api/random' 
+                    //           from origin 'https://hz_sb.localhost' has been blocked 
+                    //           by CORS policy: 
+                    //   No 'Access-Control-Allow-Origin' header is present on the requested resource.
+                    //  Issue is here: https://github.com/Tracktion/choc/issues/70
                     //  todo: remote responses take time, so we need to extend choc webview to support
                     //   webview->add_WebResourceResponseReceived(
                     // Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>(
@@ -1668,8 +1674,9 @@ private:
 
             if(uri8.rfind(defaultURI, 0) != 0)
             {
-                // an offsite request
-                std::cerr << "offsite: " << uri8 << " doesn't start with " << defaultURI << "\n";
+                // an offsite request, CORS may be in play
+                // since we don't create a response here, the normal routing occurs.
+                // std::cerr << "WebView offsite: " << uri8 << " doesn't start with " << defaultURI << "\n";
             }
             else
             if (const auto resource = fetchResourceOrPageHTML (uri8))
