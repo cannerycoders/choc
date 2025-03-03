@@ -934,6 +934,10 @@ private:
 
 #include "choc_DesktopWindow.h"
 
+#ifdef WEBVIEW2_NATIVE
+#include "webview2/wil/wrl.h"
+#include "webview2/WebView2.h"
+#else
 #ifndef __webview2_h__
 #define __webview2_h__
 
@@ -1291,6 +1295,8 @@ public:
 
 #endif // __webview2_h__
 
+#endif
+
 namespace choc::ui
 {
 
@@ -1517,7 +1523,8 @@ private:
                     if (coreWebView == nullptr)
                         return false;
 
-                    // db: work-in-progress to manipulate headers on remote responses.
+                    // db: work-in-progress 
+                    //  Manipulate headers on remote RESPONSES:
                     //  goal is to intercept response headers to remedy:
                     //   ERROR: Access to fetch at 'https://zenquotes.io/api/random' 
                     //           from origin 'https://hz_sb.localhost' has been blocked 
@@ -1626,7 +1633,8 @@ private:
         return options.fetchResource (uri.substr (defaultURI.size() - 1));
     }
 
-    HRESULT onResourceRequested (ICoreWebView2WebResourceRequestedEventArgs* args)
+    HRESULT onResourceRequested (ICoreWebView2*sender, 
+            ICoreWebView2WebResourceRequestedEventArgs* args)
     {
         struct ScopedExit
         {
@@ -1677,6 +1685,33 @@ private:
                 // an offsite request, CORS may be in play
                 // since we don't create a response here, the normal routing occurs.
                 // std::cerr << "WebView offsite: " << uri8 << " doesn't start with " << defaultURI << "\n";
+                ICoreWebView2HttpRequestHeaders *headers={};
+                ScopedExit cleanupHeaders(makeCleanupIUnknown(headers));
+                request->get_Headers(&headers);
+                LPWSTR oldOrigin = {};
+                ScopedExit cleanupOrg(makeCleanup(oldOrigin, CoTaskMemFree));
+                headers->GetHeader(L"Origin", &oldOrigin);
+                auto err = headers->RemoveHeader(L"Origin");
+                if(err)
+                {
+                    std::cerr << "webview2 remove header " << err << "\n";
+                }
+                
+                // Create a new request without the Origin header
+                LPWSTR method;
+                request->get_Method(&method);
+
+                #if 0 // WIP, requires newer IDL
+                ICoreWebView2WebResourceRequest* newRequest = {};
+                /*
+                sender->get_Environment()->CreateWebResourceRequest(
+                    uri, method, nullptr, headers.Get(), &newRequest);
+
+                // Set the modified request
+                args->put_Request(newRequest.Get());
+                */
+               #endif
+                return S_OK;
             }
             else
             if (const auto resource = fetchResourceOrPageHTML (uri8))
@@ -1799,9 +1834,10 @@ private:
             return S_OK;
         }
 
-        HRESULT STDMETHODCALLTYPE Invoke (ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) override
+        HRESULT STDMETHODCALLTYPE Invoke (ICoreWebView2*sender, 
+            ICoreWebView2WebResourceRequestedEventArgs* args) override
         {
-            return ownerPimpl.onResourceRequested (args);
+            return ownerPimpl.onResourceRequested (sender, args);
         }
 
         Pimpl& ownerPimpl;
