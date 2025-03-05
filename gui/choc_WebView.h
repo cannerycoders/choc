@@ -952,6 +952,7 @@ private:
 //==============================================================================
 #elif CHOC_WINDOWS
 
+#include <iostream>
 #include "../platform/choc_DynamicLibrary.h"
 
 // If you want to supply your own mechanism for finding the Microsoft
@@ -977,7 +978,12 @@ private:
 #include "choc_DesktopWindow.h"
 #include "choc_MessageLoop.h"
 
-#if 0 || defined(CHOC_USE_EXTERNAL_INTERFACE)
+#if defined(CHOC_USE_EXTERNAL_INTERFACE)
+// #pragma message("choc_WebView using external interfaces.")
+#pragma warning(disable: 4456)  // Disable template shadowing warning
+#pragma clang diagnostic ignored "-Wmicrosoft-template-shadow"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+
 #include <windows.h>
 #include <shlobj.h>  // Required for CSIDL_ constants
 #include <winsock2.h>
@@ -1376,7 +1382,24 @@ struct WebView::Pimpl
                 defaultURI = getURIHome (options);
                 setHTMLURI = defaultURI + "getHTMLInternal";
 
+                #if 0
                 SetWindowLongPtr (hwnd, GWLP_USERDATA, (LONG_PTR) this);
+                if(auto findVersion = 
+                    (decltype(&GetAvailableCoreWebView2BrowserVersionString))
+                        webviewDLL.findFunction("GetAvailableCoreWebView2BrowserVersionString"))
+                {
+                    LPWSTR versionInfo = nullptr;
+                    HRESULT hr = findVersion(nullptr, &versionInfo);
+                    if (SUCCEEDED(hr) && versionInfo) 
+                    {
+                        // eg: WebView2 Version: 133.0.3065.92
+                        std::wcout << L"WebView2 Version: " 
+                            << versionInfo
+                            << std::endl;
+                        CoTaskMemFree(versionInfo);
+                    }
+                }
+                #endif
 
                 if (auto userDataFolder = getUserDataFolder(); ! userDataFolder.empty())
                 {
