@@ -975,7 +975,16 @@ private:
 #endif
 
 #include "choc_DesktopWindow.h"
+#include "choc_MessageLoop.h"
 
+#if 0 || defined(CHOC_USE_EXTERNAL_INTERFACE)
+#include <windows.h>
+#include <shlobj.h>  // Required for CSIDL_ constants
+#include <winsock2.h>
+#include "webview2/wil/wrl.h"
+#include "webview2/wil/com.h" // for typedef of interface
+#include "webview2/WebView2.h"
+#else
 #ifndef __webview2_h__
 #define __webview2_h__
 
@@ -1337,6 +1346,7 @@ public:
 }
 
 #endif // __webview2_h__
+#endif // CHOC_USE_EXTERNAL_INTERFACE
 
 namespace choc::ui
 {
@@ -1460,7 +1470,8 @@ private:
         {
             COMPtr<ICoreWebView2Controller2> controller2;
 
-            if (controller->QueryInterface (ICoreWebView2Controller2::getIID(), (void**) controller2.getAddress()) == S_OK
+            // if (controller->QueryInterface (ICoreWebView2Controller2::getIID(), (void**) controller2.getAddress()) == S_OK
+            if (controller->QueryInterface (__uuidof(ICoreWebView2Controller2), (void**) controller2.getAddress()) == S_OK
                   && controller2 != nullptr)
             {
                 controller2->put_DefaultBackgroundColor ({ 0, 0, 0, 0 });
@@ -1487,7 +1498,8 @@ private:
             {
                 COMPtr<ICoreWebView2Settings2> settings2;
 
-                if (settings->QueryInterface (ICoreWebView2Settings2::getIID(), (void**) settings2.getAddress()) == S_OK
+                // if (settings->QueryInterface (ICoreWebView2Settings2::getIID(), (void**) settings2.getAddress()) == S_OK
+                if (settings->QueryInterface (__uuidof(ICoreWebView2Settings2), (void**) settings2.getAddress()) == S_OK
                         && settings2 != nullptr)
                 {
                     auto agent = createUTF16StringFromUTF8 (options.customUserAgent);
