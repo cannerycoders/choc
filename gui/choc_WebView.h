@@ -141,9 +141,13 @@ public:
 
     /// Creates a WebView with default options.
     /// This must be called on the message thread.
+    /// Creates a WebView with default options.
+    /// This must be called on the message thread.
     WebView();
 
+
     /// Creates a WebView with some options
+    /// This must be called on the message thread.
     /// This must be called on the message thread.
     WebView (const Options&);
 
@@ -152,8 +156,11 @@ public:
     WebView& operator= (WebView&&) = default;
 
     /// The destructor must be called on the message thread.
+
+    /// The destructor must be called on the message thread.
     ~WebView();
 
+    /// Returns true if the webview has been successfully constructed. This could
     /// Returns true if the webview has been successfully constructed. This could
     /// fail on some systems if the OS doesn't provide a suitable component.
     bool loadedOK() const;
@@ -978,12 +985,28 @@ private:
 #include "choc_DesktopWindow.h"
 #include "choc_MessageLoop.h"
 
+enum IIDIndex
+{
+    kICoreWebView2Settings2=0,
+    kICoreWebView2Controller2,
+};
+static IID s_iids[] = // getIID()
+{
+    // ICoreWebView2Settings2
+    { 0xee9a0f68, 0xf46c, 0x4e32, { 0xac, 0x23, 0xef, 0x8c, 0xac, 0x22, 0x4d, 0x2a } },
+    // ICoreWebView2Controller
+    { 0xc979903e, 0xd4ca, 0x4228, { 0x92, 0xeb, 0x47, 0xee, 0x3f, 0xa9, 0x6e, 0xab } }
+};
+
 #if defined(CHOC_USE_EXTERNAL_INTERFACE)
 // #pragma message("choc_WebView using external interfaces.")
 #pragma warning(disable: 4456)  // Disable template shadowing warning
 #pragma clang diagnostic ignored "-Wmicrosoft-template-shadow"
 #pragma clang diagnostic ignored "-Wunused-but-set-variable"
 
+
+#undef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>  // Required for CSIDL_ constants
 #include <winsock2.h>
@@ -1499,43 +1522,14 @@ private:
         {
             COMPtr<ICoreWebView2Controller2> controller2;
 
-            // if (controller->QueryInterface (ICoreWebView2Controller2::getIID(), (void**) controller2.getAddress()) == S_OK
-            if (controller->QueryInterface (__uuidof(ICoreWebView2Controller2), (void**) controller2.getAddress()) == S_OK
+            if (controller->QueryInterface (s_iids[kICoreWebView2Controller2], (void**) controller2.getAddress()) == S_OK
                   && controller2 != nullptr)
             {
                 controller2->put_DefaultBackgroundColor ({ 0, 0, 0, 0 });
             }
         }
 
-        #if 0 // db WIP
-                    // db: work-in-progress 
-                    //  Manipulate headers on remote RESPONSES:
-                    //  goal is to intercept response headers to remedy:
-                    //   ERROR: Access to fetch at 'https://zenquotes.io/api/random' 
-                    //           from origin 'https://hz_sb.localhost' has been blocked 
-                    //           by CORS policy: 
-                    //   No 'Access-Control-Allow-Origin' header is present on the requested resource.
-                    //  Issue is here: https://github.com/Tracktion/choc/issues/70
-                    //  todo: remote responses take time, so we need to extend choc webview to support
-                    //   webview->add_WebResourceResponseReceived(
-                    // Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>(
-                    //     [](ICoreWebView2* sender, ICoreWebView2WebResourceResponseReceivedEventArgs* args) -> HRESULT {
-                    //         // At this point, the response is guaranteed to exist
-                    //         ComPtr<ICoreWebView2WebResourceResponse> response;
-                    //         args->get_Response(&response);
-                    //         if (response) {
-                    //             // Modify response headers or other properties
-                    //             ComPtr<ICoreWebView2HttpResponseHeaders> headers;
-                    //             response->get_Headers(&headers);
-                    //             headers->Append(L"X-Modified-By", L"MyProxyServer");
-                    //         }
-                    // 
-                    //     return S_OK;
-                    // }).Get(), nullptr);
-        #endif
-
         auto wildcardFilter = createUTF16StringFromUTF8 (defaultURI + "*");
-        // const auto wildcardFilter = createUTF16StringFromUTF8 ("*");
         coreWebView->AddWebResourceRequestedFilter (wildcardFilter.c_str(), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
 
         EventRegistrationToken token;
@@ -1555,8 +1549,7 @@ private:
             {
                 COMPtr<ICoreWebView2Settings2> settings2;
 
-                // if (settings->QueryInterface (ICoreWebView2Settings2::getIID(), (void**) settings2.getAddress()) == S_OK
-                if (settings->QueryInterface (__uuidof(ICoreWebView2Settings2), (void**) settings2.getAddress()) == S_OK
+                if (settings->QueryInterface (s_iids[kICoreWebView2Settings2], (void**) settings2.getAddress()) == S_OK
                         && settings2 != nullptr)
                 {
                     auto agent = createUTF16StringFromUTF8 (options.customUserAgent);
@@ -1660,13 +1653,12 @@ private:
         return options.fetchResource (uri.substr (defaultURI.size() - 1));
     }
 
-    HRESULT onResourceRequested (ICoreWebView2*sender, 
-            ICoreWebView2WebResourceRequestedEventArgs* args)
+    HRESULT onResourceRequested (ICoreWebView2WebResourceRequestedEventArgs* args)
     {
         try
         {
             if (! coreWebViewEnvironment)
-                return E_FAIL; 
+                return E_FAIL;
 
             COMPtr<ICoreWebView2WebResourceRequest> request;
 
@@ -1691,61 +1683,19 @@ private:
 
             COMPtr<ICoreWebView2WebResourceResponse> response;
 
-            #if 0
-            auto uri8 = createUTF8FromUTF16(uri);
-
-            ICoreWebView2WebResourceResponse* response = {};
-            ScopedExit cleanupResponse (makeCleanupIUnknown (response));
-
-            if(uri8.rfind(defaultURI, 0) != 0)
-            {
-                // an offsite request, CORS may be in play
-                // since we don't create a response here, the normal routing occurs.
-                // std::cerr << "WebView offsite: " << uri8 << " doesn't start with " << defaultURI << "\n";
-                ICoreWebView2HttpRequestHeaders *headers={};
-                ScopedExit cleanupHeaders(makeCleanupIUnknown(headers));
-                request->get_Headers(&headers);
-                LPWSTR oldOrigin = {};
-                ScopedExit cleanupOrg(makeCleanup(oldOrigin, CoTaskMemFree));
-                headers->GetHeader(L"Origin", &oldOrigin);
-                auto err = headers->RemoveHeader(L"Origin");
-                if(err)
-                {
-                    std::cerr << "webview2 remove header " << err << "\n";
-                }
-                
-                // Create a new request without the Origin header
-                LPWSTR method;
-                request->get_Method(&method);
-
-                #if 0 // WIP, requires newer IDL
-                ICoreWebView2WebResourceRequest* newRequest = {};
-                /*
-                sender->get_Environment()->CreateWebResourceRequest(
-                    uri, method, nullptr, headers.Get(), &newRequest);
-
-                // Set the modified request
-                args->put_Request(newRequest.Get());
-                */
-               #endif
-                return S_OK;
-            }
-            else
-            #endif
-
             if (auto resource = fetchResourceOrPageHTML (createUTF8FromUTF16 (uri.uri)))
             {
                 COMPtr<IStream> stream;
-                
+
                 {
                     choc::file::DynamicLibrary lib ("shlwapi.dll");
                     using SHCreateMemStreamFn = IStream*(__stdcall *)(const BYTE*, UINT);
-                    
+
                     if (auto fn = reinterpret_cast<SHCreateMemStreamFn> (lib.findFunction ("SHCreateMemStream")))
                         stream.object = fn (reinterpret_cast<const BYTE*> (resource->data.data()),
                                             static_cast<UINT> (resource->data.size()));
                 };
- 
+
                 if (! stream)
                     return E_FAIL;
 
@@ -1853,7 +1803,7 @@ private:
             if (deletionCheckerRef->deleted)
                 return E_FAIL;
 
-            return ownerPimpl.onResourceRequested (sender, args);
+            return ownerPimpl.onResourceRequested (args);
         }
 
         Pimpl& ownerPimpl;
@@ -1971,7 +1921,7 @@ inline WebView::WebView (const Options& options)
     // messageloop code that it's on the main thread.
     CHOC_ASSERT (choc::messageloop::callerIsOnMessageThread());
 
-   pimpl = std::make_unique<Pimpl> (*this, options);
+    pimpl = std::make_unique<Pimpl> (*this, options);
 
     if (! pimpl->initialise())
         pimpl.reset();
