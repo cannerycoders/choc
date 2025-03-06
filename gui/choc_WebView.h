@@ -978,12 +978,28 @@ private:
 #include "choc_DesktopWindow.h"
 #include "choc_MessageLoop.h"
 
+enum IIDIndex
+{
+    kICoreWebView2Settings2=0,
+    kICoreWebView2Controller2,
+};
+static IID s_iids[] = // getIID()
+{
+    // ICoreWebView2Settings2
+    { 0xee9a0f68, 0xf46c, 0x4e32, { 0xac, 0x23, 0xef, 0x8c, 0xac, 0x22, 0x4d, 0x2a } },
+    // ICoreWebView2Controller
+    { 0xc979903e, 0xd4ca, 0x4228, { 0x92, 0xeb, 0x47, 0xee, 0x3f, 0xa9, 0x6e, 0xab } }
+};
+
 #if defined(CHOC_USE_EXTERNAL_INTERFACE)
 // #pragma message("choc_WebView using external interfaces.")
 #pragma warning(disable: 4456)  // Disable template shadowing warning
 #pragma clang diagnostic ignored "-Wmicrosoft-template-shadow"
 #pragma clang diagnostic ignored "-Wunused-but-set-variable"
 
+
+#undef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>  // Required for CSIDL_ constants
 #include <winsock2.h>
@@ -1493,8 +1509,7 @@ private:
         {
             COMPtr<ICoreWebView2Controller2> controller2;
 
-            // if (controller->QueryInterface (ICoreWebView2Controller2::getIID(), (void**) controller2.getAddress()) == S_OK
-            if (controller->QueryInterface (__uuidof(ICoreWebView2Controller2), (void**) controller2.getAddress()) == S_OK
+            if (controller->QueryInterface (s_iids[kICoreWebView2Controller2], (void**) controller2.getAddress()) == S_OK
                   && controller2 != nullptr)
             {
                 controller2->put_DefaultBackgroundColor ({ 0, 0, 0, 0 });
@@ -1521,8 +1536,7 @@ private:
             {
                 COMPtr<ICoreWebView2Settings2> settings2;
 
-                // if (settings->QueryInterface (ICoreWebView2Settings2::getIID(), (void**) settings2.getAddress()) == S_OK
-                if (settings->QueryInterface (__uuidof(ICoreWebView2Settings2), (void**) settings2.getAddress()) == S_OK
+                if (settings->QueryInterface (s_iids[kICoreWebView2Settings2], (void**) settings2.getAddress()) == S_OK
                         && settings2 != nullptr)
                 {
                     auto agent = createUTF16StringFromUTF8 (options.customUserAgent);
