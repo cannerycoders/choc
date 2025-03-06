@@ -1002,7 +1002,6 @@ static IID s_iids[] = // getIID()
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>  // Required for CSIDL_ constants
-#include <winsock2.h>
 #include "webview2/wil/wrl.h"
 #include "webview2/wil/com.h" // for typedef of interface
 #include "webview2/WebView2.h"
